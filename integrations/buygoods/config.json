@@ -1,0 +1,37 @@
+{
+  "provider": "buygoods",
+  "account_id": "11568",
+  "token_env": "BUYGOODS_TOKEN",
+  "account_id_env": "BUYGOODS_ACCOUNT_ID",
+  "page_size": 50,
+  "date_format": "YYYY-MM-DD",
+  "apis": {
+    "legacy": {
+      "base_url": "https://api.buygoods.com/affiliates/api/v1",
+      "account_param": "account_id",
+      "endpoints": {
+        "customers": "customer.php",
+        "conversions": "conversion.php",
+        "commissions": "commissions.php"
+      },
+      "notes": "Original BuyGoods affiliate API. Params: account_id, token, date_from, date_to."
+    },
+    "clickcrm": {
+      "base_url": "https://api.clickcrm.com/affiliates/v1",
+      "account_param": "a",
+      "endpoints": {
+        "sales_by_day": { "path": "byday", "formats": ["json", "csv"], "retention": "5 years" },
+        "sales_by_hour": { "path": "byhour", "formats": ["json", "csv"], "retention": "60 days" },
+        "sales_by_subid": { "path": "bysubid", "formats": ["json", "csv"] },
+        "sales_by_subid2": { "path": "bysubid2", "formats": ["json", "csv"] },
+        "commissions": { "path": "commissions", "formats": ["json"], "note": "JSON only for now" }
+      },
+      "pagination": {
+        "max_records_per_call": 50,
+        "cursor_property": "next_page",
+        "cursor_param": "next_page"
+      },
+      "notes": "Newer ClickCRM-hosted API. Params: a (account id), token, date_from, date_to, response_type (json|csv), next_page."
+    }
+  }
+}
