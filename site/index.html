@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Affiliate MeetUps — The Operator's Club</title>
+  <meta name="description" content="AMU is the operator's club for affiliate marketing. Recurring gatherings, real intel, vetted network — belong.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --paper:#F7F4EF;--paper2:#EFEBE3;
+      --ink:#111010;--ink2:#3A3633;--ink3:rgba(17,16,16,.42);
+      --br:#8A6A3B;--brl:#A88250;--brbg:rgba(138,106,59,.08);
+      --rule:rgba(17,16,16,.1);--rules:rgba(17,16,16,.2);
+      --fxs:11px;--fsm:13px;--fb:15px;--fmd:18px;--flg:22px;--fxl:32px;--f2xl:48px;
+      --fhero:clamp(52px,8vw,96px);
+      --s1:8px;--s2:16px;--s3:24px;--s4:32px;--s5:40px;--s6:48px;--s8:64px;--s10:80px;--s12:96px;
+      --mw:1160px;--nh:64px;--g:clamp(24px,5vw,60px);
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+    body{font-family:'Inter',sans-serif;background:var(--paper);color:var(--ink);line-height:1.6;overflow-x:hidden}
+    a{color:inherit;text-decoration:none}
+    img{display:block;max-width:100%}
+    .c{max-width:var(--mw);margin:0 auto;padding:0 var(--g)}
+    .eb{font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
+    .ebbr{font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.12em;text-transform:uppercase;color:var(--br)}
+    /* NAV */
+    nav{position:fixed;top:0;left:0;right:0;z-index:999;height:var(--nh);background:rgba(247,244,239,.93);backdrop-filter:blur(20px);border-bottom:1px solid var(--rule);display:flex;align-items:center}
+    .ni{width:100%;max-width:var(--mw);margin:0 auto;padding:0 var(--g);display:flex;align-items:center;justify-content:space-between}
+    .nlogo{font-size:14px;font-weight:700;letter-spacing:.02em;color:var(--ink)}
+    .nlogo .nd{color:var(--br)}
+    .nlinks{display:flex;align-items:center;gap:32px}
+    .nlinks a{font-size:var(--fsm);font-weight:500;color:var(--ink2);transition:color .2s}
+    .nlinks a:hover{color:var(--ink)}
+    .ncta{font-size:var(--fsm)!important;font-weight:600!important;color:var(--ink)!important;border:1px solid var(--rules)!important;padding:8px 20px!important;border-radius:4px;transition:all .2s!important}
+    .ncta:hover{background:var(--ink)!important;color:var(--paper)!important;border-color:var(--ink)!important}
+    /* BTNS */
+    .btn{display:inline-flex;align-items:center;gap:8px;font-size:var(--fsm);font-weight:600;padding:12px 24px;border-radius:4px;transition:all .2s;border:none;line-height:1}
+    .bi{background:var(--ink);color:var(--paper)}.bi:hover{background:#2a2826;transform:translateY(-1px)}
+    .bo{background:transparent;color:var(--ink);border:1px solid var(--rules)}.bo:hover{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+    .bbr{background:var(--br);color:#fff}.bbr:hover{background:var(--brl);transform:translateY(-1px)}
+    .bp{background:var(--paper);color:var(--ink)}.bp:hover{background:#fff;transform:translateY(-1px)}
+    .bol{background:transparent;color:rgba(247,244,239,.65);border:1px solid rgba(247,244,239,.18)}.bol:hover{border-color:rgba(247,244,239,.4);color:var(--paper)}
+    .blg{padding:15px 32px;font-size:var(--fb)}
+    /* HERO */
+    .hero{min-height:100vh;padding-top:calc(var(--nh) + var(--s10));padding-bottom:var(--s12);display:flex;flex-direction:column;justify-content:flex-end;position:relative;overflow:hidden}
+    .hbg{position:absolute;inset:0;background:url(/photos/event-budapest-2024a.jpg) center 28%/cover no-repeat}
+    .hbg::after{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(247,244,239,0) 0%,rgba(247,244,239,0) 28%,rgba(247,244,239,.6) 58%,rgba(247,244,239,.97) 80%,var(--paper) 100%)}
+    .hcon{position:relative;z-index:2}
+    .hkick{display:flex;align-items:center;gap:16px;margin-bottom:40px}
+    .hkdot{width:6px;height:6px;border-radius:50%;background:var(--br)}
+    .hero h1{font-size:var(--fhero);font-weight:800;line-height:.92;letter-spacing:-.04em;color:var(--ink);max-width:800px;margin-bottom:40px}
+    .hero h1 em{font-style:normal;color:var(--br)}
+    .hsub{font-size:var(--fmd);color:var(--ink2);max-width:520px;line-height:1.65;margin-bottom:48px}
+    .hact{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:64px}
+    .hproof{display:flex;gap:40px;flex-wrap:wrap;align-items:center}
+    .hpi{display:flex;flex-direction:column;gap:2px}
+    .hpn{font-size:var(--fxl);font-weight:800;color:var(--ink);letter-spacing:-.03em;line-height:1}
+    .hpl{font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+    .hpdiv{width:1px;height:40px;background:var(--rules)}
+    /* TICKER */
+    .ticker{background:var(--ink);overflow:hidden;height:40px;display:flex;align-items:center}
+    .ttrack{display:flex;animation:troll 30s linear infinite;white-space:nowrap}
+    .ti{display:inline-flex;align-items:center;padding:0 40px;font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.12em;text-transform:uppercase;color:rgba(247,244,239,.5)}
+    .ti .sep{color:var(--br);margin:0 16px}
+    @keyframes troll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+    /* SECTIONS */
+    .sec{padding:var(--s12) 0}
+    .seca{background:var(--paper2)}
+    .secd{background:var(--ink);color:var(--paper)}
+    .shead{display:flex;align-items:flex-start;justify-content:space-between;gap:32px;margin-bottom:64px;padding-bottom:32px;border-bottom:1px solid var(--rule)}
+    .shead-d{border-bottom-color:rgba(247,244,239,.1)}
+    .stitle{font-size:var(--f2xl);font-weight:800;letter-spacing:-.03em;line-height:1.08;color:var(--ink)}
+    .stitle-l{color:var(--paper)}
+    .sdesc{font-size:var(--fb);color:var(--ink2);max-width:400px;line-height:1.7}
+    .sdesc-l{color:rgba(247,244,239,.55)}
+    .slbl{font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.12em;text-transform:uppercase;color:var(--br);margin-bottom:12px}
+    /* GRID */
+    .gb{display:grid;gap:1px;background:var(--rules);border:1px solid var(--rules)}
+    .cell{background:var(--paper)}
+    .cella{background:var(--paper2)}
+    /* ETHOS */
+    .eg{grid-template-columns:1fr 1fr}
+    .ec{padding:48px}
+    .enum{font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.1em;color:var(--br);margin-bottom:24px}
+    .eh{font-size:var(--flg);font-weight:700;letter-spacing:-.02em;margin-bottom:16px;color:var(--ink)}
+    .ep{font-size:var(--fsm);color:var(--ink2);line-height:1.75}
+    .eph{grid-column:1/-1;position:relative;overflow:hidden;height:340px}
+    .eph img{width:100%;height:100%;object-fit:cover;object-position:center 35%}
+    .ephcap{position:absolute;bottom:12px;left:16px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:rgba(247,244,239,.7);background:rgba(17,16,16,.45);padding:3px 8px;border-radius:2px}
+    /* MEETUPS */
+    .mlist{display:flex;flex-direction:column;gap:1px;background:var(--rules);border:1px solid var(--rules)}
+    .mrow{background:var(--paper);display:grid;grid-template-columns:110px 1fr 120px;align-items:center;gap:32px;padding:24px 40px;transition:background .15s}
+    .mrow:hover{background:var(--paper2)}
+    .mrow.past{opacity:.55}
+    .mdate{font-family:'DM Mono',monospace;font-size:var(--fsm);letter-spacing:.04em;color:var(--ink2);line-height:1.4}
+    .mdsub{font-family:'DM Mono',monospace;font-size:var(--fxs);color:var(--ink3);letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+    .mt{font-size:var(--fb);font-weight:700;color:var(--ink);margin-bottom:3px}
+    .mm{font-family:'DM Mono',monospace;font-size:var(--fxs);color:var(--ink3);letter-spacing:.06em}
+    .badge{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:2px;display:inline-block}
+    .bs{background:var(--brbg);color:var(--br);border:1px solid rgba(138,106,59,.2)}
+    .bp2{background:rgba(17,16,16,.05);color:var(--ink2);border:1px solid var(--rule)}
+    .bpa{background:transparent;color:var(--ink3);border:1px solid var(--rule)}
+    /* CHAPTERS */
+    .chg{grid-template-columns:repeat(3,1fr)}
+    .chc{padding:40px}
+    .chcity{font-size:var(--fxl);font-weight:800;letter-spacing:-.03em;color:var(--ink);margin-bottom:4px}
+    .chreg{font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.1em;text-transform:uppercase;color:var(--br)}
+    .chst{display:flex;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-top:32px}
+    .chdot{width:6px;height:6px;border-radius:50%;background:var(--br)}
+    .chdim{opacity:.4}
+    /* LADDER */
+    .ladg{grid-template-columns:repeat(3,1fr)}
+    .lads{padding:48px 40px;position:relative}
+    .lads::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+    .lads:nth-child(1)::before{background:rgba(17,16,16,.16)}
+    .lads:nth-child(2)::before{background:var(--br)}
+    .lads:nth-child(3)::before{background:var(--ink)}
+    .ladt{font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);margin-bottom:24px}
+    .ladn{font-size:var(--flg);font-weight:800;letter-spacing:-.02em;color:var(--ink);margin-bottom:16px}
+    .ladd{font-size:var(--fsm);color:var(--ink2);line-height:1.7;margin-bottom:32px}
+    .ladp{list-style:none;display:flex;flex-direction:column;gap:16px}
+    .ladp li{font-size:var(--fsm);color:var(--ink2);display:flex;align-items:flex-start;gap:6px}
+    .ladp li::before{content:'→';color:var(--br);flex-shrink:0;font-size:var(--fxs);margin-top:3px}
+    /* INTEL */
+    .intg{grid-template-columns:1fr 1fr}
+    .intc{padding:48px}
+    .intcw{grid-column:1/-1}
+    .intcat{font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.1em;text-transform:uppercase;color:var(--br);margin-bottom:24px}
+    .intth{font-size:var(--flg);font-weight:700;letter-spacing:-.02em;color:var(--ink);margin-bottom:16px;line-height:1.3}
+    .inttx{font-size:var(--fsm);color:var(--ink2);line-height:1.75}
+    .intlk{display:inline-flex;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin-top:32px}
+    /* EDITIONS */
+    .edg{grid-template-columns:repeat(3,1fr)}
+    .edc{padding:40px}
+    .edev{font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin-bottom:24px}
+    .edn{font-size:var(--flg);font-weight:700;letter-spacing:-.02em;color:var(--ink);margin-bottom:16px}
+    .edd{font-size:var(--fsm);color:var(--ink2);line-height:1.65;margin-bottom:32px}
+    .edav{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--br)}
+    .edso{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+    /* PHOTO STRIP */
+    .pstrip{display:grid;grid-template-columns:repeat(4,1fr);gap:2px}
+    .psi{position:relative;overflow:hidden;padding-bottom:75%}
+    .psi img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .4s}
+    .psi:hover img{transform:scale(1.05)}
+    .pslbl{position:absolute;bottom:8px;left:10px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:rgba(247,244,239,.75);background:rgba(17,16,16,.5);padding:3px 8px;border-radius:2px}
+    /* JOIN */
+    .jinn{display:flex;align-items:center;justify-content:space-between;gap:64px;flex-wrap:wrap}
+    .jey{font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.12em;text-transform:uppercase;color:var(--br);margin-bottom:24px}
+    .jt{font-size:var(--f2xl);font-weight:800;letter-spacing:-.03em;color:var(--paper);line-height:1.08;margin-bottom:24px}
+    .js{font-size:var(--fb);color:rgba(247,244,239,.55);max-width:400px;line-height:1.65}
+    .jact{display:flex;flex-direction:column;gap:16px;flex-shrink:0}
+    /* ABOUT */
+    .abg{display:grid;grid-template-columns:280px 1fr;gap:64px;align-items:start}
+    .asb{position:sticky;top:calc(var(--nh) + 16px)}
+    .apw{background:var(--paper2);border:1px solid var(--rule);overflow:hidden}
+    .apw img{width:100%;height:360px;object-fit:cover;object-position:top}
+    .apcap{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-top:8px}
+    .alead{font-size:var(--fxl);font-weight:700;color:var(--ink);letter-spacing:-.02em;line-height:1.3;margin-bottom:40px}
+    .abody p{font-size:var(--fmd);color:var(--ink2);line-height:1.75;margin-bottom:32px}
+    .acreed{border-left:2px solid var(--br);padding-left:32px;margin:48px 0}
+    .acreed p{font-size:var(--fb);font-style:italic;color:var(--ink2);line-height:1.7}
+    /* FOOTER */
+    footer{background:var(--ink);color:var(--paper);padding:64px 0 40px}
+    .ftop{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:64px;padding-bottom:48px;border-bottom:1px solid rgba(247,244,239,.1);margin-bottom:40px}
+    .flogo{font-size:14px;font-weight:700;color:var(--paper);margin-bottom:16px}
+    .flogo .fd{color:var(--br)}
+    .ftag{font-size:var(--fsm);color:rgba(247,244,239,.4);line-height:1.65;max-width:240px}
+    .fcol h5{font-family:'DM Mono',monospace;font-size:var(--fxs);letter-spacing:.1em;text-transform:uppercase;color:rgba(247,244,239,.35);margin-bottom:24px}
+    .fcol ul{list-style:none;display:flex;flex-direction:column;gap:16px}
+    .fcol li a{font-size:var(--fsm);color:rgba(247,244,239,.5);transition:color .2s}
+    .fcol li a:hover{color:var(--paper)}
+    .fbot{display:flex;align-items:center;justify-content:space-between;gap:32px;flex-wrap:wrap}
+    .fcopy{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:rgba(247,244,239,.28)}
+    .fleg{display:flex;gap:32px}
+    .fleg a{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:rgba(247,244,239,.28);transition:color .2s}
+    .fleg a:hover{color:rgba(247,244,239,.6)}
+    /* RESPONSIVE */
+    @media(max-width:900px){.eg,.intg{grid-template-columns:1fr}.intcw{grid-column:auto}.chg{grid-template-columns:1fr 1fr}.ladg{grid-template-columns:1fr}.edg{grid-template-columns:1fr 1fr}.pstrip{grid-template-columns:repeat(2,1fr)}.ftop{grid-template-columns:1fr 1fr}.abg{grid-template-columns:1fr}.asb{position:static}}
+    @media(max-width:600px){.nlinks{display:none}.hpdiv{display:none}.mrow{grid-template-columns:1fr;gap:8px}.chg{grid-template-columns:1fr}.edg{grid-template-columns:1fr}.pstrip{grid-template-columns:1fr 1fr}.ftop{grid-template-columns:1fr}.jact{width:100%}}
+  </style>
+</head>
+<body>
+<!-- NAV -->
+<nav>
+  <div class="ni">
+    <a href="#" class="nlogo">Affiliate<span class="nd">.</span>MeetUps</a>
+    <div class="nlinks">
+      <a href="#meetups">Meetups</a>
+      <a href="#chapters">Chapters</a>
+      <a href="#members">Members</a>
+      <a href="#intel">Intel</a>
+      <a href="#editions">Editions</a>
+      <a href="#about">About</a>
+      <a href="#join" class="ncta">Join the Club</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="home">
+  <div class="hbg"></div>
+  <div class="hcon c">
+    <div class="hkick">
+      <div class="hkdot"></div>
+      <span class="eb">The Operator's Club &mdash; Performance Marketing</span>
+    </div>
+    <h1>Belong to<br>something<br><em>real.</em></h1>
+    <p class="hsub">AMU is the recurring gathering and vetted network for affiliate marketers, media buyers and performance operators. The meetup is the excuse &mdash; the community is the product.</p>
+    <div class="hact">
+      <a href="#join" class="btn bi blg">Join the Club</a>
+      <a href="#meetups" class="btn bo blg">Upcoming Meetups &rarr;</a>
+    </div>
+    <div class="hproof">
+      <div class="hpi"><span class="hpn">500+</span><span class="hpl">Operators</span></div>
+      <div class="hpdiv"></div>
+      <div class="hpi"><span class="hpn">12</span><span class="hpl">Cities</span></div>
+      <div class="hpdiv"></div>
+      <div class="hpi"><span class="hpn">24</span><span class="hpl">Events '22–'25</span></div>
+      <div class="hpdiv"></div>
+      <div class="hpi"><span class="hpn">6</span><span class="hpl">Chapters Active</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- TICKER -->
+<div class="ticker" aria-hidden="true">
+  <div class="ttrack">
+    <div class="ti">BANGKOK NOV 2025<span class="sep">&middot;</span>BUDAPEST SEP 2025<span class="sep">&middot;</span>NYC SIDE EVENT JUN 2025<span class="sep">&middot;</span>AWE ROME FEB 2026<span class="sep">&middot;</span>ASW LAS VEGAS JAN 2027<span class="sep">&middot;</span>AFFILIATE WORLD DUBAI FEB 2027<span class="sep">&middot;</span>IGB BARCELONA APR 2027<span class="sep">&middot;</span>SIGMA LIVE MAR 2026<span class="sep">&middot;</span></div>
+    <div class="ti">BANGKOK NOV 2025<span class="sep">&middot;</span>BUDAPEST SEP 2025<span class="sep">&middot;</span>NYC SIDE EVENT JUN 2025<span class="sep">&middot;</span>AWE ROME FEB 2026<span class="sep">&middot;</span>ASW LAS VEGAS JAN 2027<span class="sep">&middot;</span>AFFILIATE WORLD DUBAI FEB 2027<span class="sep">&middot;</span>IGB BARCELONA APR 2027<span class="sep">&middot;</span>SIGMA LIVE MAR 2026<span class="sep">&middot;</span></div>
+  </div>
+</div>
+
+<!-- 01. THE CLUB -->
+<section class="sec" id="club">
+  <div class="c">
+    <div class="shead">
+      <div>
+        <div class="slbl">01 &mdash; The Club</div>
+        <h2 class="stitle">Not a conference.<br>A community.</h2>
+      </div>
+      <p class="sdesc">Every major affiliate conference has a side event everyone remembers more than the main floor. AMU is that side event, built into a permanent, recurring institution.</p>
+    </div>
+    <div class="gb eg">
+      <div class="cell ec">
+        <div class="enum">01</div>
+        <h3 class="eh">The meetup is the excuse.</h3>
+        <p class="ep">We show up at Affiliate World, Affiliate Summit, iGB, SiGMA. The AMU gathering is where the real conversations happen &mdash; smaller room, better people, no pitch decks required.</p>
+      </div>
+      <div class="cell ec">
+        <div class="enum">02</div>
+        <h3 class="eh">Operators only.</h3>
+        <p class="ep">AMU is for the people who run the machine. Who know their numbers, carry the risk, and don't need permission. Not for spectators. Not for tourists of the industry.</p>
+      </div>
+      <div class="cell ec">
+        <div class="enum">03</div>
+        <h3 class="eh">Quiet competence over loud presence.</h3>
+        <p class="ep">The operator doesn't announce &mdash; the results do. AMU keeps it tight: vetted access, real intel, no inflated speaker counts or badge-swiping crowds.</p>
+      </div>
+      <div class="cell ec">
+        <div class="enum">04</div>
+        <h3 class="eh">City-to-city continuity.</h3>
+        <p class="ep">Bangkok to Budapest to NYC &mdash; familiar faces across borders. The network travels. Relationships that span years and continents, built in rooms of 40 to 120.</p>
+      </div>
+      <div class="eph">
+        <img src="/photos/collage-2.jpg" alt="AMU gathering — operators in the room" loading="lazy">
+        <span class="ephcap">AMU &mdash; Budapest, Sep 2024</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 02. MEETUPS -->
+<section class="sec seca" id="meetups">
+  <div class="c">
+    <div class="shead">
+      <div>
+        <div class="slbl">02 &mdash; Meetups</div>
+        <h2 class="stitle">The Calendar.</h2>
+      </div>
+      <p class="sdesc">AMU runs alongside the industry's key conferences. Show up at the show. Show up at the room that matters.</p>
+    </div>
+    <div class="mlist">
+      <!-- UPCOMING -->
+      <div class="mrow">
+        <div><div class="mdate">FEB 2026</div><div class="mdsub">Confirmed</div></div>
+        <div>
+          <div class="mt">AMU @ Affiliate World Europe — Rome</div>
+          <div class="mm">Rome, Italy &middot; AWE side event &middot; Approx. 80 operators</div>
+        </div>
+        <span class="badge bs">Coming Soon</span>
+      </div>
+      <div class="mrow">
+        <div><div class="mdate">MAR 2026</div><div class="mdsub">Planned</div></div>
+        <div>
+          <div class="mt">AMU @ SiGMA Live Europe</div>
+          <div class="mm">Malta &middot; iGaming + affiliate crossover</div>
+        </div>
+        <span class="badge bp2">Planned</span>
+      </div>
+      <div class="mrow">
+        <div><div class="mdate">JUN 2026</div><div class="mdsub">Planned</div></div>
+        <div>
+          <div class="mt">AMU @ Affiliate Summit East</div>
+          <div class="mm">New York, USA &middot; Performance marketing hub</div>
+        </div>
+        <span class="badge bp2">Planned</span>
+      </div>
+      <div class="mrow">
+        <div><div class="mdate">JAN 2027</div><div class="mdsub">Planned</div></div>
+        <div>
+          <div class="mt">AMU @ Affiliate Summit West</div>
+          <div class="mm">Las Vegas, USA</div>
+        </div>
+        <span class="badge bp2">Planned</span>
+      </div>
+      <div class="mrow">
+        <div><div class="mdate">FEB 2027</div><div class="mdsub">Planned</div></div>
+        <div>
+          <div class="mt">AMU @ Affiliate World Dubai</div>
+          <div class="mm">Dubai, UAE</div>
+        </div>
+        <span class="badge bp2">Planned</span>
+      </div>
+      <!-- PAST -->
+      <div class="mrow past">
+        <div><div class="mdate">NOV 2025</div><div class="mdsub">Past</div></div>
+        <div>
+          <div class="mt">AMU @ Affiliate World Asia — Bangkok</div>
+          <div class="mm">Bangkok, Thailand &middot; 120+ attendees</div>
+        </div>
+        <span class="badge bpa">Completed</span>
+      </div>
+      <div class="mrow past">
+        <div><div class="mdate">SEP 2025</div><div class="mdsub">Past</div></div>
+        <div>
+          <div class="mt">AMU Budapest</div>
+          <div class="mm">Budapest, Hungary &middot; 95 attendees</div>
+        </div>
+        <span class="badge bpa">Completed</span>
+      </div>
+      <div class="mrow past">
+        <div><div class="mdate">JUN 2025</div><div class="mdsub">Past</div></div>
+        <div>
+          <div class="mt">AMU NYC Side Event</div>
+          <div class="mm">New York, USA &middot; Closed room, 60 operators</div>
+        </div>
+        <span class="badge bpa">Completed</span>
+      </div>
+    </div>
+    <div style="margin-top:24px;display:flex;justify-content:flex-start">
+      <a href="/calendar" class="btn bo">Full event calendar &rarr;</a>
+    </div>
+  </div>
+</section>
+
+<!-- 03. CHAPTERS -->
+<section class="sec" id="chapters">
+  <div class="c">
+    <div class="shead">
+      <div>
+        <div class="slbl">03 &mdash; Chapters</div>
+        <h2 class="stitle">Where operators<br>are based.</h2>
+      </div>
+      <p class="sdesc">AMU chapters are the institutional layer. Each chapter has a local host. Together they make AMU outlast any single organizer.</p>
+    </div>
+    <div class="gb chg">
+      <div class="cell chc">
+        <div class="chcity">New York</div>
+        <div class="chreg">North America</div>
+        <div class="chst"><span class="chdot"></span> Active Chapter</div>
+      </div>
+      <div class="cell chc">
+        <div class="chcity">Bangkok</div>
+        <div class="chreg">Southeast Asia</div>
+        <div class="chst"><span class="chdot"></span> Active Chapter</div>
+      </div>
+      <div class="cell chc">
+        <div class="chcity">Budapest</div>
+        <div class="chreg">Central Europe</div>
+        <div class="chst"><span class="chdot"></span> Active Chapter</div>
+      </div>
+      <div class="cell chc">
+        <div class="chcity">Barcelona</div>
+        <div class="chreg">Southern Europe</div>
+        <div class="chst"><span class="chdot"></span> Active Chapter</div>
+      </div>
+      <div class="cell chc">
+        <div class="chcity">Dubai</div>
+        <div class="chreg">Middle East</div>
+        <div class="chst"><span class="chdot"></span> Active Chapter</div>
+      </div>
+      <div class="cell chc chdim">
+        <div class="chcity">Toronto</div>
+        <div class="chreg">North America</div>
+        <div class="chst">Forming</div>
+      </div>
+      <div class="cell chc chdim">
+        <div class="chcity">Singapore</div>
+        <div class="chreg">Southeast Asia</div>
+        <div class="chst">Forming</div>
+      </div>
+      <div class="cell chc chdim">
+        <div class="chcity">London</div>
+        <div class="chreg">Western Europe</div>
+        <div class="chst">Forming</div>
+      </div>
+      <div class="cell chc chdim">
+        <div class="chcity">Your City</div>
+        <div class="chreg">Open</div>
+        <div class="chst">Propose a chapter &rarr;</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 04. MEMBERS / LADDER -->
+<section class="sec seca" id="members">
+  <div class="c">
+    <div class="shead">
+      <div>
+        <div class="slbl">04 &mdash; Members</div>
+        <h2 class="stitle">How to belong.</h2>
+      </div>
+      <p class="sdesc">AMU has a progression. You don't buy a ticket once and disappear. You earn your place in the room &mdash; then you help build it for others.</p>
+    </div>
+    <div class="gb ladg">
+      <div class="cell lads">
+        <div class="ladt">Tier 01 &mdash; Newcomer</div>
+        <div class="ladn">Show Up</div>
+        <div class="ladd">You're new to the AMU network. You found us through a conference or a referral. The door is open — we don't ask if you're fast, just if you're serious.</div>
+        <ul class="ladp">
+          <li>Attend public AMU events</li>
+          <li>Access the event recap newsletter</li>
+          <li>Community Slack / Discord (coming)</li>
+          <li>Introduce yourself to the chapter host</li>
+        </ul>
+      </div>
+      <div class="cell lads">
+        <div class="ladt">Tier 02 &mdash; Regular</div>
+        <div class="ladn">Operate</div>
+        <div class="ladd">You've shown up more than once. You're part of the recurring network. You get access to the intel layer — real data, vetted partners, benchmark reports.</div>
+        <ul class="ladp">
+          <li>Everything in Tier 01</li>
+          <li>Members-only Intel drops</li>
+          <li>Vetted partner introductions</li>
+          <li>Priority access to limited events &amp; edition drops</li>
+          <li>Cross-chapter introductions</li>
+        </ul>
+      </div>
+      <div class="cell lads">
+        <div class="ladt">Tier 03 &mdash; Chapter Host</div>
+        <div class="ladn">Build</div>
+        <div class="ladd">You're AMU in your city. You organize the local side event, vet new members, and represent the chapter at the global level. The institution runs through you.</div>
+        <ul class="ladp">
+          <li>Everything in Tier 02</li>
+          <li>Chapter host designation + page</li>
+          <li>AMU operational support for your events</li>
+          <li>Direct line to all chapter hosts globally</li>
+          <li>Founding editions &amp; archival access</li>
+          <li>Recognized in the AMU record</li>
+        </ul>
+      </div>
+    </div>
+    <div style="margin-top:24px;text-align:center">
+      <a href="#join" class="btn bi">Apply for membership &rarr;</a>
+    </div>
+  </div>
+</section>
+<!-- PHOTO STRIP -->
+<div class="pstrip">
+  <div class="psi"><img src="/photos/collage-1.jpg" alt="AMU event" loading="lazy"><span class="pslbl">Barcelona '23</span></div>
+  <div class="psi"><img src="/photos/event-bangkok-2024a.jpg" alt="AMU Bangkok" loading="lazy"><span class="pslbl">Bangkok '24</span></div>
+  <div class="psi"><img src="/photos/event-budapest-2024b.jpg" alt="AMU Budapest" loading="lazy"><span class="pslbl">Budapest '24</span></div>
+  <div class="psi"><img src="/photos/event-dubai-2023.jpg" alt="AMU Dubai" loading="lazy"><span class="pslbl">Dubai '23</span></div>
+</div>
+
+<!-- 05. INTEL -->
+<section class="sec" id="intel">
+  <div class="c">
+    <div class="shead">
+      <div>
+        <div class="slbl">05 &mdash; Intel</div>
+        <h2 class="stitle">The useful gear.</h2>
+      </div>
+      <p class="sdesc">The technical-honesty principle: real payout data, vetted partners, tested playbooks. Substance that earns the premium. No fluff.</p>
+    </div>
+    <div class="gb intg">
+      <div class="cell intc intcw">
+        <div class="intcat">Benchmark Data</div>
+        <h3 class="intth">Performance benchmarks by vertical and traffic source.</h3>
+        <p class="inttx">AMU members share anonymized EPC, CPA and CVR ranges across verticals — nutra, health, finance, insurance. Compiled quarterly. Only possible inside a vetted network where nobody is trying to sell you something.</p>
+        <span class="intlk">&#128274; Members only — Tier 02+</span>
+      </div>
+      <div class="cell intc">
+        <div class="intcat">Partner Network</div>
+        <h3 class="intth">Vetted partners &mdash; no cold intros.</h3>
+        <p class="inttx">Every partner in the AMU network has been vouched for by at least two chapter members. When you get an introduction through AMU, the vetting is already done.</p>
+        <span class="intlk">&#128274; Members only — Tier 02+</span>
+      </div>
+      <div class="cell intc">
+        <div class="intcat">Playbooks</div>
+        <h3 class="intth">Operator playbooks — tested, not theoretical.</h3>
+        <p class="inttx">Traffic source audits, creative frameworks, compliance checklists. Written by operators who run the campaigns, not by consultants who bill by the hour.</p>
+        <span class="intlk">&#128274; Members only — Tier 02+</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 06. EDITIONS -->
+<section class="sec seca" id="editions">
+  <div class="c">
+    <div class="shead">
+      <div>
+        <div class="slbl">06 &mdash; Editions</div>
+        <h2 class="stitle">Limited. Dated.<br>From a real moment.</h2>
+      </div>
+      <p class="sdesc">Each AMU event produces a limited edition — a physical artifact tied to that city, that gathering, that moment. Scarcity from a real standard, not a gimmick.</p>
+    </div>
+    <div class="gb edg">
+      <div class="cell edc">
+        <div class="edev">AWE Rome &mdash; Feb 2026</div>
+        <div class="edn">Rome Edition</div>
+        <div class="edd">Heavyweight tote + zine. Numbered. 60 copies. Distributed to verified attendees only. Documents the gathering: attendee list (opt-in), venue, notes from the room.</div>
+        <div class="edav">Available to attendees &rarr;</div>
+      </div>
+      <div class="cell edc">
+        <div class="edev">Budapest &mdash; Sep 2025</div>
+        <div class="edn">Budapest Edition</div>
+        <div class="edd">Field notebook + patch. 95 copies produced. Numbered. Archived in the AMU record. No restock. The event existed; this is the proof.</div>
+        <div class="edso">Sold out &mdash; archived</div>
+      </div>
+      <div class="cell edc">
+        <div class="edev">Bangkok &mdash; Nov 2025</div>
+        <div class="edn">Bangkok Edition</div>
+        <div class="edd">Caps + keycard holder. 120 copies. Distributed at the event. One per verified attendee. Not available online, never will be.</div>
+        <div class="edso">Sold out &mdash; archived</div>
+      </div>
+    </div>
+    <p style="margin-top:24px;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)">Each edition is dated, numbered and entered into the AMU archive. Nothing is restocked.</p>
+  </div>
+</section>
+
+<!-- JOIN BANNER -->
+<section class="secd" id="join">
+  <div class="c" style="padding-top:80px;padding-bottom:80px">
+    <div class="jinn">
+      <div>
+        <div class="jey">Join the Club</div>
+        <h2 class="jt">The door is open.<br>If you're serious.</h2>
+        <p class="js">AMU membership is by application. We vet every member. If you run affiliate campaigns, own the risk, and want a vetted network &mdash; apply. Completely free to join.</p>
+      </div>
+      <div class="jact">
+        <a href="https://www.affiliatemeetups.com" class="btn bp blg">Apply Now &mdash; Free</a>
+        <a href="#chapters" class="bol" style="font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:13px 28px;border-radius:4px;text-align:center;display:block;transition:all .2s">Find your chapter &rarr;</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 07. ABOUT -->
+<section class="sec" id="about">
+  <div class="c">
+    <div class="shead">
+      <div>
+        <div class="slbl">07 &mdash; About</div>
+        <h2 class="stitle">The operator<br>behind AMU.</h2>
+      </div>
+    </div>
+    <div class="abg">
+      <div class="asb">
+        <div class="apw">
+          <img src="/photos/collage-3.jpg" alt="AMU founder" loading="lazy">
+        </div>
+        <div class="apcap">Rémi St-Maur &mdash; Founder, AMU</div>
+      </div>
+      <div class="abody">
+        <p class="alead">AMU was built because the best conversations at affiliate conferences always happened in the side room &mdash; never on the main stage.</p>
+        <p>After years of attending Affiliate World, Affiliate Summit and iGB as a media buyer and network operator, it became clear that the value wasn't in the keynotes. It was in the 40-person dinner the night before. The rooftop after the show. The hallway conversation that turned into a partnership.</p>
+        <p>AMU is the attempt to make that room permanent &mdash; to give it structure, continuity and membership, so it outlasts any single event and any single organizer.</p>
+        <div class="acreed">
+          <p>The operator doesn't announce. The results announce. We don't chase attendee counts or sponsor logos. We build a room worth being in &mdash; and let the word spread from there.</p>
+        </div>
+        <p>XenTraffic operates the AMU platform and the member network. Every event is run by chapter hosts who are active operators in their market. The institution, not the personality.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="c">
+    <div class="ftop">
+      <div>
+        <div class="flogo">Affiliate<span class="fd">.</span>MeetUps</div>
+        <p class="ftag">The recurring gathering and vetted network for affiliate marketing operators. Est. 2022.</p>
+      </div>
+      <div class="fcol">
+        <h5>Gather</h5>
+        <ul>
+          <li><a href="#meetups">Upcoming Events</a></li>
+          <li><a href="/calendar">Full Calendar</a></li>
+          <li><a href="#chapters">Chapters</a></li>
+          <li><a href="#editions">Editions</a></li>
+        </ul>
+      </div>
+      <div class="fcol">
+        <h5>Members</h5>
+        <ul>
+          <li><a href="#join">Join the Club</a></li>
+          <li><a href="#intel">Intel</a></li>
+          <li><a href="#members">Membership Tiers</a></li>
+          <li><a href="/digest">Weekly Digest</a></li>
+        </ul>
+      </div>
+      <div class="fcol">
+        <h5>Network</h5>
+        <ul>
+          <li><a href="https://xentraffic.com">XenTraffic</a></li>
+          <li><a href="https://xentraffic.com/apply">Become an Affiliate</a></li>
+          <li><a href="#about">About AMU</a></li>
+          <li><a href="mailto:hello@affiliatemeetups.com">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="fbot">
+      <div class="fcopy">&copy; 2025 AffiliateMeetUps &mdash; XenTraffic</div>
+      <div class="fleg">
+        <a href="/privacy">Privacy</a>
+        <a href="#">Terms</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

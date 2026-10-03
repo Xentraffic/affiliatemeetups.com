@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Filter/query URLs are noindex-controlled via meta tags
+Disallow: /calendar/?*
+
+Sitemap: https://www.affiliatemeetups.com/sitemap-index.xml
