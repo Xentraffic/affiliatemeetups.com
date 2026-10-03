@@ -47,7 +47,8 @@
     /* HERO */
     .hero{min-height:100vh;padding-top:calc(var(--nh) + var(--s10));padding-bottom:var(--s12);display:flex;flex-direction:column;justify-content:flex-end;position:relative;overflow:hidden}
     .hbg{position:absolute;inset:0;background:url(/photos/event-budapest-2024a.jpg) center 28%/cover no-repeat}
-    .hbg::after{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(247,244,239,0) 0%,rgba(247,244,239,0) 28%,rgba(247,244,239,.6) 58%,rgba(247,244,239,.97) 80%,var(--paper) 100%)}
+    .hbg::after{content:'';position:absolute;inset:0;background:linear-gradient(to right,rgba(247,244,239,.94) 0%,rgba(247,244,239,.9) 52%,rgba(247,244,239,.45) 70%,rgba(247,244,239,0) 88%),linear-gradient(to bottom,rgba(247,244,239,0) 0%,rgba(247,244,239,0) 28%,rgba(247,244,239,.6) 58%,rgba(247,244,239,.97) 80%,var(--paper) 100%)}
+    @media(max-width:900px){.hbg::after{background:linear-gradient(to bottom,rgba(247,244,239,.82) 0%,rgba(247,244,239,.88) 50%,rgba(247,244,239,.97) 80%,var(--paper) 100%)}}
     .hcon{position:relative;z-index:2}
     .hkick{display:flex;align-items:center;gap:16px;margin-bottom:40px}
     .hkdot{width:6px;height:6px;border-radius:50%;background:var(--br)}
@@ -474,7 +475,7 @@
   <div class="psi"><img src="/photos/collage-1.jpg" alt="AMU event" loading="lazy"><span class="pslbl">Barcelona '23</span></div>
   <div class="psi"><img src="/photos/event-bangkok-2024a.jpg" alt="AMU Bangkok" loading="lazy"><span class="pslbl">Bangkok '24</span></div>
   <div class="psi"><img src="/photos/event-budapest-2024b.jpg" alt="AMU Budapest" loading="lazy"><span class="pslbl">Budapest '24</span></div>
-  <div class="psi"><img src="/photos/event-dubai-2023.jpg" alt="AMU Dubai" loading="lazy"><span class="pslbl">Dubai '23</span></div>
+  <div class="psi"><img src="/photos/amu-crowd-1.jpg" alt="AMU Dubai" loading="lazy"><span class="pslbl">Dubai '23</span></div>
 </div>
 
 <!-- 05. INTEL -->
