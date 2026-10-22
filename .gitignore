@@ -1,1 +1,10 @@
+# Local secrets — never commit real API tokens (this repo is public)
+.env
+.env.*
+!.env.example
+
+node_modules/
+__pycache__/
+*.pyc
+
 graphify-out/
