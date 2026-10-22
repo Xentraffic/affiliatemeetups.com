@@ -1,0 +1,42 @@
+{
+  "sponsors": [
+    {
+      "id": "xentraffic",
+      "name": "XenTraffic",
+      "url": "https://xentraffic.com",
+      "logo": "https://affiliatemeetups.com/assets/images/646d67eb72bef01999ce0c5e_XenLogoBlack_copie.png",
+      "tagline": "The Affiliate Network Built by Media Buyers",
+      "cta": "Apply as Affiliate →",
+      "cta_url": "https://xentraffic.com",
+      "tier": "platinum",
+      "active": true,
+      "placement": ["digest_footer", "highlights_footer", "members_page"]
+    }
+  ],
+  "premium": {
+    "enabled": false,
+    "tiers": [
+      {
+        "id": "community",
+        "name": "Community",
+        "price_monthly": 0,
+        "features": ["Telegram group access", "Daily highlights", "Member profile"]
+      },
+      {
+        "id": "pro",
+        "name": "Pro",
+        "price_monthly": 29,
+        "features": ["Everything in Community", "Full digest access", "Link feed", "Saved messages", "Event early access"],
+        "stripe_price_id": null
+      },
+      {
+        "id": "vip",
+        "name": "VIP",
+        "price_monthly": 99,
+        "features": ["Everything in Pro", "Private mastermind", "Direct line to Remi", "Conference meetup priority"],
+        "stripe_price_id": null
+      }
+    ],
+    "note": "Stripe integration pending. Enable when ready to monetize."
+  }
+}
