@@ -1,0 +1,1 @@
+module.exports={apps:[{name:'amu-founding-staging',script:require('node:path').join(__dirname,'../server.js'),instances:1,exec_mode:'fork',env:{NODE_ENV:'production',WAITLIST_PORT:'3863',WAITLIST_BASE_PATH:'/staging'},max_memory_restart:'256M'}]};
