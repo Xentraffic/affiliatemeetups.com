@@ -1,0 +1,1 @@
+fetch('/api/founding-agents/config').then(r=>r.json()).then(c=>{for(const key of ['operator','address','contact'])document.querySelectorAll('[data-'+key+']').forEach(el=>el.textContent=c[key]);}).catch(()=>{});
