@@ -11,6 +11,9 @@ const cors = require('cors');
 const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const { execSync } = require('child_process');
+const { sendMail } = require('./mailer');
+const waitlist = require('./waitlist-store');
+const { joinPage, legalPage, LEGAL } = require('./join-form');
 
 const app = express();
 const PORT = 3851;
@@ -18,6 +21,7 @@ const DB_PATH = '/home/xenhive/amu-platform/stats.db';
 
 app.use(cors({ origin: ['https://affiliatemeetups.com', 'https://www.affiliatemeetups.com', 'http://localhost:3000'] }));
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 // Directory, leaderboard, and onboarding answers are personal data.
 // Closed unless AMU_MEMBERS_READ_TOKEN is set and sent as a Bearer token.
@@ -55,6 +59,16 @@ app.get('/api/members', requireMembersRead, (req, res) => {
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+app.get('/api/members/join', (req, res) => {
+  const token = waitlist.issueFormToken();
+  res.setHeader('Set-Cookie', `amu_join=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/api/members; Max-Age=7200`);
+  res.type('html').send(joinPage({ token }));
+});
+
+app.get('/api/members/legal', (req, res) => {
+  res.type('html').send(legalPage());
 });
 
 // GET /api/members/:username — single profile
@@ -181,39 +195,110 @@ function cyberimpactAddMember(email, groupId, firstname, lastname) {
   });
 }
 
+let cyberimpactForward = null;
+
+function clientIp(req) {
+  const forwarded = req.get('cf-connecting-ip') || req.get('x-real-ip') || req.get('x-forwarded-for') || '';
+  return forwarded.split(',')[0].trim() || req.socket?.remoteAddress || '';
+}
+
+function readCookies(req) {
+  const out = {};
+  for (const part of (req.get('cookie') || '').split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key) out[key] = decodeURIComponent(rest.join('='));
+  }
+  return out;
+}
+
+async function forwardIfEnabled(email, firstname, lastname) {
+  if (process.env.CYBERIMPACT_FORWARD !== '1') return { forwarded: false };
+  const send = cyberimpactForward || cyberimpactAddMember;
+  const result = await send(email, AMU_GROUP_ID, firstname, lastname);
+  console.log(`[amu-register] ${email.slice(0, 3)}*** → group ${AMU_GROUP_ID} — HTTP ${result.status}`);
+  if (!cyberimpactForward && result.status === 409) {
+    try {
+      const search = await cyberimpactRequest('GET', `/members/${encodeURIComponent(email)}`, CYBERIMPACT_API_KEY);
+      const existing = search.ok ? search.body : null;
+      if (existing && existing.id) {
+        const addGroup = await cyberimpactRequest('POST', `/members/${existing.id}/groups`, CYBERIMPACT_API_KEY, { groups: String(AMU_GROUP_ID) });
+        console.log(`[amu-register] existing member ${email.slice(0, 3)}*** → group ${AMU_GROUP_ID} HTTP ${addGroup.status}`);
+      }
+    } catch (err) {
+      console.error('[amu-register] 409 group-add fallback error:', err.message);
+    }
+  }
+  return { forwarded: true, status: result.status, duplicate: result.status === 409 };
+}
+
 app.post('/api/members/register', async (req, res) => {
-  const { firstname, lastname, email, company, jobtitle, phone } = req.body || {};
+  const body = req.body || {};
+  const email = String(body.email || '').trim().toLowerCase();
+  const firstname = waitlist.clip(body.firstname, 80);
+  const lastname = waitlist.clip(body.lastname, 80);
   if (!email || !EMAIL_RE.test(email)) {
     return res.status(400).json({ ok: false, error: 'Valid email is required' });
   }
   if (!firstname || !lastname) {
     return res.status(400).json({ ok: false, error: 'First and last name are required' });
   }
-  try {
-    const result = await cyberimpactAddMember(email, AMU_GROUP_ID, firstname, lastname);
-    console.log(`[amu-register] ${email.slice(0,3)}*** → group ${AMU_GROUP_ID} — HTTP ${result.status}`);
-
-    // 409 = contact already exists. Look up their ID and add to AMU group explicitly.
-    if (result.status === 409) {
-      try {
-        const search = await cyberimpactRequest('GET', `/members/${encodeURIComponent(email)}`, CYBERIMPACT_API_KEY);
-        const existing = search.ok ? search.body : null;
-        if (existing && existing.id) {
-          const addGroup = await cyberimpactRequest('POST', `/members/${existing.id}/groups`, CYBERIMPACT_API_KEY, { groups: String(AMU_GROUP_ID) });
-          console.log(`[amu-register] existing member ${email.slice(0,3)}*** (id=${existing.id}) → added to group ${AMU_GROUP_ID} HTTP ${addGroup.status}`);
-        } else {
-          console.warn(`[amu-register] 409 but could not find member by email in search`);
-        }
-      } catch (e2) {
-        console.error('[amu-register] 409 group-add fallback error:', e2.message);
-      }
-    }
-
-    res.json({ ok: true, status: result.status, duplicate: result.status === 409 });
-  } catch (err) {
-    console.error('[amu-register] error:', err.message);
-    res.status(500).json({ ok: false, error: 'Registration failed. Please try again.' });
+  const blob = [body.company, body.role, body.goal, body.traffic].join('\n');
+  if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(blob) || /\bamu_(live|test)_[A-Za-z0-9_-]{8,}/.test(blob)) {
+    return res.status(400).json({ ok: false, error: 'That submission cannot be stored' });
   }
+  if (body.client === 'waitlist-form') {
+    if (body.company_url_2) {
+      return res.status(400).json({ ok: false, error: 'Could not accept this submission' });
+    }
+    const started = Number(body.started_at);
+    const age = Date.now() - started;
+    const cookies = readCookies(req);
+    if (!body.form_token || cookies.amu_join !== body.form_token || !waitlist.consumeFormToken(body.form_token)) {
+      return res.status(400).json({ ok: false, error: 'Could not accept this submission' });
+    }
+    if (!Number.isFinite(started) || age < 2000 || age > 2 * 60 * 60 * 1000) {
+      return res.status(400).json({ ok: false, error: 'Could not accept this submission' });
+    }
+  }
+  const limit = waitlist.enforceRateLimit(email, clientIp(req));
+  if (!limit.ok) {
+    res.set('Retry-After', String(limit.retry_after));
+    return res.status(429).json({ ok: false, error: 'Too many requests' });
+  }
+  const fields = {
+    email,
+    firstname,
+    lastname,
+    company: waitlist.clip(body.company, 200),
+    role: waitlist.clip(body.role || body.jobtitle, 120),
+    country: waitlist.clip(body.country, 80),
+    website: waitlist.clip(body.website, 300),
+    traffic: waitlist.clip(body.traffic, 500),
+    source: waitlist.clip(body.source, 200),
+    goal: waitlist.clip(body.goal, 2000),
+    phone: waitlist.clip(body.phone, 40),
+  };
+  const saved = waitlist.insertSignup(fields, clientIp(req));
+  let forwarded = { forwarded: false };
+  try {
+    forwarded = await forwardIfEnabled(email, firstname, lastname);
+  } catch (err) {
+    console.error('[amu-register] forward error:', err.message);
+    forwarded = { forwarded: false, forward_error: true };
+  }
+  try {
+    await sendMail({
+      to: email,
+      subject: 'AffiliateMeetups waitlist',
+      text: `${LEGAL}\n\nWe stored your request ${saved.id}. No email provider is selected yet.`,
+    });
+  } catch (err) {
+    console.error('[amu-register] mail error:', err.message);
+  }
+  if (req.is('application/x-www-form-urlencoded')) {
+    return res.type('html').send(`<!doctype html><html lang="en"><body style="font-family:Georgia,serif;background:#F7F4EF;padding:32px"><h1>Request stored</h1><p>${LEGAL}</p><p>Reference ${saved.id}</p></body></html>`);
+  }
+  res.json({ ok: true, stored: true, id: saved.id, ...forwarded });
 });
 
 // GET /api/health
@@ -227,4 +312,8 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, requireMembersRead };
+function setCyberimpactForwarder(fn) {
+  cyberimpactForward = fn;
+}
+
+module.exports = { app, requireMembersRead, setCyberimpactForwarder };
