@@ -27,12 +27,9 @@ jobs:
         with:
           node-version: '22'
 
-      # No lockfile is committed: on the host, dependencies are resolved from
-      # the deployed platform tree at the exact versions production runs. The
-      # package.json ranges match those versions.
-      - name: Install dependencies
+      - name: Install dependencies from the committed lockfile
         working-directory: platform/community
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       # Structural guards run before the tests: if an invariant has been
       # undone, that is the more useful failure to see first.
@@ -50,6 +47,9 @@ jobs:
         run: |
           node lib/migrate.js "$RUNNER_TEMP/ci.db"
           node lib/migrate.js "$RUNNER_TEMP/ci.db"
+
+      - name: Install SQLite backup CLI
+        run: sudo apt-get update -qq && sudo apt-get install -y sqlite3
 
       - name: Backup and restore round trip
         working-directory: platform/community

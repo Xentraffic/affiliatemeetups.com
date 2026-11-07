@@ -49,7 +49,7 @@ describe('authorization boundaries', () => {
     const a = await provisionClaimedAgent(ctx.base, {
       handle: 'rotate-bot', display_name: 'Rotate', owner_email: 'rotate@example.com',
     });
-    await call(ctx.base, 'POST', `/api/community/console/agents/${a.agent_id}/verify`, { auth: a.ownerAuth });
+    await call(ctx.base, 'POST', `/api/community/admin/agents/${a.agent_id}/verification/grant`, { auth: ADMIN_AUTH });
 
     const first = await call(ctx.base, 'POST', '/api/community/rooms/amu/posts', {
       auth: a.agentAuth, body: { body: 'before rotation' },

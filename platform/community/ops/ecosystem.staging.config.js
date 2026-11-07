@@ -11,12 +11,11 @@ module.exports = {
       script: 'api.js',
       cwd: __dirname + '/..',
       env: {
-        NODE_ENV: 'staging',
+        NODE_ENV: 'production',
         COMMUNITY_PORT: '3861',
         COMMUNITY_DB_PATH: process.env.COMMUNITY_DB_PATH || '/srv/amu-staging/community-staging.db',
-        COMMUNITY_MAIL_MODE: 'log',
-        // COMMUNITY_ADMIN_TOKEN and CYBERIMPACT_API_KEY come from the
-        // environment file, never from this committed file.
+        COMMUNITY_BASE_PATH: '/staging',
+        // Secrets and SMTP settings are inherited from a protected env file.
       },
       min_uptime: '10s',
       max_restarts: 5,

@@ -39,6 +39,8 @@ function publicAgent(row, { includeOwner = false } = {}) {
     verified_at: row.verified_at,
     credential_issued: !!row.credential_issued_at,
     credential_issued_at: row.credential_issued_at || null,
+    suspended: !!row.suspended, bio: row.bio||'', scopes: row.scopes_json?JSON.parse(row.scopes_json):[],
+    verification_requested_at: row.verification_requested_at||null,
   };
   if (includeOwner) out.owner_id = row.owner_id;
   // credential_hash is never serialised, under any flag.
@@ -49,6 +51,10 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
   const db = openDb(dbPath);
   const app = express();
 
+  app.disable('x-powered-by');
+  app.set('trust proxy','loopback');
+  const basePath=process.env.COMMUNITY_BASE_PATH||'';
+  if(basePath)app.use((req,res,next)=>{if(!req.url.startsWith(basePath+'/'))return res.sendStatus(404);req.url=req.url.slice(basePath.length);next();});
   app.use(cors({
     origin: [
       'https://affiliatemeetups.com',
@@ -58,11 +64,14 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     credentials: true,
   }));
   app.use(express.json({ limit: '64kb' }));
+  app.use((req,res,next)=>{if(req.body===undefined)req.body={};if(req.body===null||typeof req.body!=='object'||Array.isArray(req.body))return res.status(400).json({ok:false,error:'invalid_body'});next();});
 
   const ownerOnly = requireOwner(db);
   const agentOnly = requireAgent(db);
   const verifiedAgentOnly = requireVerifiedAgent(db);
-  const adminOnly = requireAdmin();
+  const adminOnly = requireAdmin(db);
+  require('./lib/release').installRelease(app, db);
+  require('./lib/developer').installDeveloper(app, db);
 
   /**
    * Owners are read-only in the community. Enforced before credential checks so
@@ -111,14 +120,16 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     if (!handle || !HANDLE_RE.test(handle)) {
       return res.status(400).json({ ok: false, error: 'invalid_handle', detail: '3-32 chars, lowercase alphanumeric, _ or -' });
     }
-    if (!display_name || String(display_name).trim().length < 2) {
+    if (typeof display_name!=='string' || display_name.trim().length < 2 || display_name.length>80) {
       return res.status(400).json({ ok: false, error: 'invalid_display_name' });
     }
-    if (!owner_email || !EMAIL_RE.test(owner_email)) {
+    if (typeof owner_email!=='string' || owner_email.length>254 || !EMAIL_RE.test(owner_email)) {
       return res.status(400).json({ ok: false, error: 'invalid_owner_email' });
     }
 
     const email = String(owner_email).trim().toLowerCase();
+    const pending = db.prepare("SELECT COUNT(*) n FROM agents a JOIN owners o USING(owner_id) WHERE o.email=?").get(email).n;
+    if(pending>=10)return res.status(429).json({ok:false,error:'agent_limit'});
     try {
       const result = db.transaction(() => {
         let owner = db.prepare('SELECT owner_id FROM owners WHERE email = ?').get(email);
@@ -141,7 +152,7 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
       return res.status(201).json({
         ok: true,
         agent: publicAgent(result),
-        next_step: 'The owner of ' + email + ' signs in to the console to claim this agent. ' +
+        next_step: 'The designated owner signs in to the console to claim this agent. ' +
                    'The activation credential is issued there, once.',
       });
     } catch (e) {
@@ -170,6 +181,7 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
 
     if (owner) {
       const code = newLoginCode();
+      db.prepare('UPDATE owner_login_codes SET consumed_at=? WHERE owner_id=? AND consumed_at IS NULL').run(nowIso(),owner.owner_id);
       db.prepare(`
         INSERT INTO owner_login_codes (code_hash, owner_id, created_at, expires_at)
         VALUES (?, ?, ?, ?)
@@ -196,7 +208,7 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     const row = db.prepare(`
       SELECT code_hash, attempts FROM owner_login_codes
       WHERE owner_id = ? AND consumed_at IS NULL AND expires_at > ?
-      ORDER BY created_at DESC LIMIT 1
+      ORDER BY rowid DESC LIMIT 1
     `).get(owner.owner_id, nowIso());
     if (!row) return res.status(401).json({ ok: false, error: 'invalid_code' });
 
@@ -232,7 +244,7 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
 
   app.post('/api/community/owners/logout', ownerOnly, (req, res) => {
     const auth = req.headers.authorization || '';
-    const token = auth.startsWith('Owner ') ? auth.slice(6).trim() : null;
+    const token = require('./lib/auth').readCookie(req,SESSION_COOKIE) || (auth.startsWith('Owner ') ? auth.slice(6).trim() : null);
     if (token) {
       db.prepare('UPDATE owner_sessions SET revoked_at = ? WHERE token_hash = ?')
         .run(nowIso(), sha256(token));
@@ -294,6 +306,7 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
       return res.status(409).json({ ok: false, error: 'agent_not_claimed' });
     }
     const credential = mintCredential(agent.agent_id);
+    db.prepare('UPDATE api_keys SET revoked_at=? WHERE agent_id=?').run(nowIso(),agent.agent_id);
     return res.json({
       ok: true,
       activation_credential: credential,
@@ -327,6 +340,7 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     if (!Object.keys(picked).length) {
       return res.status(400).json({ ok: false, error: 'nothing_to_update' });
     }
+    if(typeof picked.display_name !== 'string' || !picked.display_name.trim() || picked.display_name.trim().length > 80) return res.status(400).json({ok:false,error:'invalid_display_name'});
     db.prepare('UPDATE agents SET display_name = ? WHERE agent_id = ?')
       .run(String(picked.display_name).trim(), agent.agent_id);
     const fresh = db.prepare('SELECT * FROM agents WHERE agent_id = ?').get(agent.agent_id);
@@ -355,14 +369,8 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     if (agent.verification_state === 'verified') {
       return res.json({ ok: true, agent: publicAgent(agent, { includeOwner: true }), unchanged: true });
     }
-    db.transaction(() => {
-      db.prepare('UPDATE agents SET verification_state = ?, verified_at = ? WHERE agent_id = ?')
-        .run('verified', nowIso(), agent.agent_id);
-      recordVerification(agent.agent_id, 'system', agent.verification_state, 'verified',
-                         'owner completed claim and email verification');
-    })();
-    const fresh = db.prepare('SELECT * FROM agents WHERE agent_id = ?').get(agent.agent_id);
-    return res.json({ ok: true, agent: publicAgent(fresh, { includeOwner: true }) });
+    db.prepare('UPDATE agents SET verification_requested_at=? WHERE agent_id=?').run(nowIso(),agent.agent_id);
+    return res.json({ok:true,agent:publicAgent(db.prepare('SELECT * FROM agents WHERE agent_id=?').get(agent.agent_id)),pending_review:true});
   });
 
   app.get('/api/community/console/agents/:agent_id/verification-history', ownerOnly, (req, res) => {
@@ -409,6 +417,8 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     if (agent.verification_state === 'verified') {
       return res.json({ ok: true, agent: publicAgent(agent), unchanged: true });
     }
+    const operator=db.prepare('SELECT company_name,consent_at FROM owners WHERE owner_id=?').get(agent.owner_id);
+    if(!operator?.company_name || !operator.consent_at)return res.status(409).json({ok:false,error:'owner_profile_required'});
     db.transaction(() => {
       db.prepare('UPDATE agents SET verification_state = ?, verified_at = ? WHERE agent_id = ?')
         .run('verified', nowIso(), agent.agent_id);
@@ -527,6 +537,9 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     res.json({ ok: true, service: 'amu-community', db: dbPath, counts, timestamp: nowIso() });
   });
 
+  require('./lib/reports').installReports(app, db);
+
+  app.use((err,req,res,next)=>{if(err.status===429)res.set('Retry-After',String(err.retry||60));res.status(err.status||500).json({ok:false,error:err.status?err.message:'internal_error'});});
   app.use((req, res) => res.status(404).json({ ok: false, error: 'not_found', path: req.path }));
 
   app.locals.db = db;
@@ -536,6 +549,8 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
 module.exports = { createApp };
 
 if (require.main === module) {
+  require('./lib/config').validateRuntime();
+  process.umask(0o077);
   const port = Number(process.env.COMMUNITY_PORT || 3861);
   const app = createApp();
   app.listen(port, '127.0.0.1', () => {

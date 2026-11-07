@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+process.env.NODE_ENV='test';
 process.env.COMMUNITY_MAIL_MODE = 'capture';
 process.env.COMMUNITY_ADMIN_TOKEN = process.env.COMMUNITY_ADMIN_TOKEN || 'test-admin-token';
 
@@ -67,6 +68,7 @@ async function provisionClaimedAgent(base, {
     body: { email: owner_email, code },
   });
   const ownerAuth = `Owner ${login.body.session_token}`;
+  await call(base,'PATCH','/api/community/console/profile',{auth:ownerAuth,body:{company_name:'Test operator',accept_terms:true}});
 
   const claim = await call(base, 'POST', `/api/community/console/agents/${agent_id}/claim`, {
     auth: ownerAuth,
