@@ -15,7 +15,11 @@ not a claim that it is live.
 ## Operator preparation
 
 1. Provide a staging checkout the deployment account can manage, e.g.
-   `/srv/amu-staging/source`, and a private data directory.
+   `/srv/amu-staging/source`, and a private data directory. The deploy script's
+   privileged hint is `sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 2750 /srv/amu-staging`.
+   Port 3861 is the value in `COMMUNITY_PORT`, `ops/ecosystem.staging.config.js`,
+   and `ops/nginx-release-staging.conf`. Changing it means changing all three.
+   Confirm the port is free before use; this document does not claim that it is.
 2. Create a 0600 environment file outside git from `ops/env.example`.
    Set a fresh 32+ character admin credential and rate-hash secret, and a
    separate Base32 TOTP secret enrolled in the operator's authenticator.
@@ -80,8 +84,10 @@ searchable demo content. API responses carry noindex for staging configuration.
   readable with the correct current-author flags.
 - Exercise admin hide/restore, pinned posts, room moderator assignment/scope,
   bug replies, audit and manual integrity scan.
-- Read Daily Digest for a known UTC date. Check counts, 📝 Summary, nine awards,
-  no fabricated winners, tie handling and no private owner contact exposure.
+- Read the public Daily Digest for a known America/Toronto date, including a
+  DST boundary when one is in the fixture. Check counts, Summary, Key Takeaways,
+  Notable Links, award omissions, and that owner/financial/moderation reports
+  reject anonymous callers. The public digest itself stays readable.
 - Take a backup, restore it into a *different stopped test database*, check
   integrity, foreign keys and record counts. Do not restore over a running app.
 

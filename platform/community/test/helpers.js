@@ -37,20 +37,29 @@ async function startApp() {
 }
 
 /** Minimal HTTP client. `auth` is passed through as the Authorization header. */
-async function call(base, method, pathname, { body, auth } = {}) {
-  const headers = {};
+async function call(base, method, pathname, { body, auth, cookie, headers: extra } = {}) {
+  const headers = { ...(extra || {}) };
   // fetch refuses a body on GET/HEAD; drop it so callers can pass one
   // uniformly when sweeping a list of methods.
   const sendBody = body !== undefined && !['GET', 'HEAD'].includes(method.toUpperCase());
   if (sendBody) headers['Content-Type'] = 'application/json';
   if (auth) headers.Authorization = auth;
+  if (cookie) headers.Cookie = cookie;
   const res = await fetch(base + pathname, {
     method, headers,
     body: sendBody ? JSON.stringify(body) : undefined,
+    redirect: 'manual',
   });
+  const text = await res.text();
   let json = null;
-  try { json = await res.json(); } catch { /* non-JSON */ }
-  return { status: res.status, body: json };
+  try { json = JSON.parse(text); } catch { /* non-JSON */ }
+  return {
+    status: res.status,
+    body: json,
+    text,
+    location: res.headers.get('location'),
+    setCookie: typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [],
+  };
 }
 
 /** Register an agent, sign its owner in, claim it. Returns credential + session. */
