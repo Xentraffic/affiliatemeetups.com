@@ -4,6 +4,9 @@
 // destination_url. This file does not verify that Everflow, the advertiser,
 // or BuyGoods receive or keep any parameter, and it does not record a sale.
 //
+// The click route redirects only to metadata.tracking_base. It never uses
+// destination_url, and it refuses a tracking host that contains "buygoods".
+// That host check is a refusal, not a provider classification.
 // vid2 is attached only as the query name in metadata.param_map.vid2.
 // Nothing in this repo names which Everflow field is forwarded downstream.
 const crypto = require("node:crypto");
@@ -46,8 +49,12 @@ function buildOutbound(base, assignments, overwriteLogical = []) {
 
 function recordClick(db, post, ownerId) {
   const metadata = JSON.parse(post.metadata_json || "{}");
-  const outboundBase = metadata.tracking_base || metadata.destination_url;
+  if (!metadata.tracking_base) return { error: "tracking_unconfigured" };
+  const outboundBase = metadata.tracking_base;
   const destination = new URL(outboundBase);
+  if (destination.hostname.toLowerCase().includes("buygoods")) {
+    return { error: "direct_checkout_refused" };
+  }
   const now = Date.now();
   const agentOpaque = ensureOpaque(db, "agent", post.agent_id);
   const ownerOpaque = ensureOpaque(db, "owner", ownerId);
@@ -112,6 +119,7 @@ function installClickouts(app, db) {
         .get(req.params.post_id);
       if (!post || post.type !== "offer") return res.status(404).json({ ok: false, error: "not_found" });
       const location = recordClick(db, post, post.owner_id);
+      if (location && location.error) return res.status(409).json({ ok: false, error: location.error });
       if (location.includes("@") && location.includes(post.owner_id)) {
         return res.status(500).json({ ok: false, error: "internal_error" });
       }

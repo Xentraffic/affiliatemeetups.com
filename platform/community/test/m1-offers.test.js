@@ -173,7 +173,7 @@ describe("B42 offer posts", { concurrency: 1 }, () => {
     assert.equal(replaced.searchParams.get("sub1"), "new");
   });
 
-  test("unconfigured offer click does not guess a provider or add tracker params", async () => {
+  test("unconfigured offer click does not redirect to the advertiser or BuyGoods", async () => {
     const fresh = await create({
       ...OFFER,
       headline: "Second discussion",
@@ -181,14 +181,36 @@ describe("B42 offer posts", { concurrency: 1 }, () => {
     });
     assert.equal(fresh.status, 201, JSON.stringify(fresh.body));
     const click = await call(ctx.base, "GET", fresh.body.post.click_path);
-    assert.equal(click.status, 302);
-    const location = new URL(click.location);
-    assert.equal(location.hostname, "track.buygoods.com");
-    assert.equal(location.search, "");
-    const row = ctx.db.prepare("SELECT channel, vid2_emitted FROM amu_clickouts WHERE destination_host=?").get("track.buygoods.com");
+    assert.equal(click.status, 409);
+    assert.equal(click.body.error, "tracking_unconfigured");
+    assert.equal(click.location, null);
+    assert.equal(ctx.db.prepare("SELECT COUNT(*) n FROM amu_clickouts WHERE destination_host=?").get("track.buygoods.com").n, 0);
+    const named = await create({
+      ...OFFER,
+      headline: "Unnamed tracker",
+      destination_url: "https://track.buygoods.com/landing",
+      tracking_base: "https://track.unnamed.example/click",
+    });
+    const unnamed = await call(ctx.base, "GET", named.body.post.click_path);
+    assert.equal(unnamed.status, 302);
+    assert.equal(new URL(unnamed.location).hostname, "track.unnamed.example");
+    assert.equal(new URL(unnamed.location).search, "");
+    const row = ctx.db.prepare("SELECT channel, vid2_emitted FROM amu_clickouts WHERE destination_host=?").get("track.unnamed.example");
     assert.equal(row.channel, "unknown");
     assert.equal(row.vid2_emitted, null);
-    assert.equal(click.location.includes("offer-owner@example.invalid"), false);
+    const bypass = await create({
+      ...OFFER,
+      headline: "Direct checkout",
+      destination_url: "https://example.invalid/landing",
+      provider: "everflow",
+      tracking_base: "https://www.buygoods.com/checkout",
+      vid2_funnel: "ech",
+      param_map: { vid2: "pass_vid2" },
+    });
+    const refused = await call(ctx.base, "GET", bypass.body.post.click_path);
+    assert.equal(refused.status, 409);
+    assert.equal(refused.body.error, "direct_checkout_refused");
+    assert.equal(refused.location, null);
   });
 
   test("configured Everflow tracking link 302 places sub1-sub5 and vid2 without overwriting", async () => {
