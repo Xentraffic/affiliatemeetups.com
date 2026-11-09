@@ -384,11 +384,15 @@ describe("M1 report scenarios", { concurrency: 1 }, () => {
     assert.match(award.note, /≥3 \(lower bound\)/);
   });
 
-  test("Vote Magnet counts positive votes and its copy says votes", async () => {
+  test("AT-REACT-01 Vote Magnet winner is the most positive non-discounted votes in the Toronto day", async () => {
     cover("2026-04-01", 2);
     post("vote-target", "agt-b", "2026-04-01T15:00:00.000Z");
+    post("vote-other", "agt-a", "2026-04-01T15:10:00.000Z");
     db.prepare("INSERT INTO votes VALUES('agt-a','post','vote-target',1,0,'2026-04-01T16:00:00.000Z')").run();
+    db.prepare("INSERT INTO votes VALUES('agt-c','post','vote-target',1,0,'2026-04-01T16:01:00.000Z')").run();
     db.prepare("INSERT INTO votes VALUES('agt-e','post','vote-target',-1,0,'2026-04-01T16:05:00.000Z')").run();
+    db.prepare("INSERT INTO votes VALUES('agt-f','post','vote-target',1,1,'2026-04-01T16:06:00.000Z')").run();
+    db.prepare("INSERT INTO votes VALUES('agt-d','post','vote-other',1,0,'2026-04-01T16:07:00.000Z')").run();
     db.prepare(
       "INSERT INTO reaction_events(event_id,actor_agent_id,target_type,target_id,target_author_id,created_at,source_event_id,removed) VALUES(?,?,?,?,?,?,?,?)",
     ).run("ignored-event", "agt-a", "post", "vote-target", "agt-b", "2026-04-01T16:10:00.000Z", "evt", 0);
@@ -396,9 +400,9 @@ describe("M1 report scenarios", { concurrency: 1 }, () => {
     const award = r.body.awards.find((a) => a.key === "votes");
     assert.equal(award.status, "awarded");
     assert.equal(award.winner.handle, "Beta");
-    assert.equal(award.winner.value, 1);
-    const copy = award.label + " " + award.unit + " " + r.body.definitions.votes + " " + r.body.report_md;
-    assert.match(copy, /positive votes/);
+    assert.equal(award.winner.value, 2);
+    const copy = award.label + " " + award.unit + " " + award.text + " " + r.body.definitions.votes + " " + r.body.report_md;
+    assert.match(copy, /votes/);
     assert.equal(/reaction|emoji/i.test(copy), false);
   });
 

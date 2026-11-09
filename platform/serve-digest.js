@@ -29,6 +29,19 @@ function getDb(readonly = true) {
   return new Database(DB_PATH, { readonly });
 }
 
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Join links render only when AMU_TELEGRAM_INVITE_URL is set. No built-in invite.
+function inviteLink(label, attrs = '') {
+  const url = String(process.env.AMU_TELEGRAM_INVITE_URL || '').trim();
+  if (!url) return '';
+  const extra = attrs ? ' ' + attrs : '';
+  return `<a href="${escHtml(url)}"${extra}>${label}</a>`;
+}
+
 // ─── L4.5 DIGEST ───────────────────────────────────────────
 
 // GET /digest?date=YYYY-MM-DD&channel=amu
@@ -169,7 +182,7 @@ app.get('/digest/html', (req, res) => {
 
     <div class="footer">
       <div>Powered by AMU 🔮</div>
-      <a href="https://t.me/+nrDKZxYhDRxiOTE8" class="join-cta">Join the Community →</a>
+      ${inviteLink('Join the Community →', 'class="join-cta"')}
     </div>
   </div>
 </body>
@@ -305,7 +318,7 @@ app.get('/links/html', (req, res) => {
 
     <div class="footer">
       <div>Powered by AMU 🔮</div>
-      <a href="https://t.me/+nrDKZxYhDRxiOTE8" class="join-cta">Join the Community →</a>
+      ${inviteLink('Join the Community →', 'class="join-cta"')}
     </div>
   </div>
 </body>
@@ -390,7 +403,7 @@ app.get('/members/html', (req, res) => {
           <div class="emoji">👥</div>
           <h3>Profiles coming soon</h3>
           <p>Members who join the Telegram group get onboarded here. Be the first to fill out your profile.</p>
-          <a href="https://t.me/+nrDKZxYhDRxiOTE8" target="_blank" class="tg-btn">Join AMU Telegram →</a>
+          ${inviteLink('Join AMU Telegram →', 'target="_blank" class="tg-btn"')}
         </div>`
       : members.map(m => `
           <div class="member-card">
@@ -422,7 +435,7 @@ app.get('/members/html', (req, res) => {
         <div class="header">
           <div class="logo"><a href="/" style="color:inherit;text-decoration:none">← affiliatemeetups.com</a></div>
           <h1>Community Members</h1>
-          <div class="meta">${members.length} affiliate${members.length !== 1 ? 's' : ''} with profiles · <a href="https://t.me/+nrDKZxYhDRxiOTE8" target="_blank" style="color:#ff6b35">Join the group →</a></div>
+          <div class="meta">${members.length} affiliate${members.length !== 1 ? 's' : ''} with profiles · ${inviteLink('Join the group →', 'target="_blank" style="color:#ff6b35"')}</div>
         </div>
         ${members.length > 3 ? '<input class="search-box" id="search" placeholder="Search members..." oninput="filterMembers(this.value)"/>' : ''}
         <div id="memberList">${memberCards}</div>
@@ -514,21 +527,20 @@ app.get('/leaderboard/html', (req, res) => {
           ${allTimeRows || '<div style="color:#888;padding:20px 0;text-align:center">No data yet</div>'}
         </div>
         <div style="margin-top:32px;text-align:center">
-          <a href="https://t.me/+nrDKZxYhDRxiOTE8" target="_blank" class="tg-btn">Join AMU Telegram →</a>
+          ${inviteLink('Join AMU Telegram →', 'target="_blank" class="tg-btn"')}
         </div>
       </div>
     </body></html>`);
   } catch(e) { res.status(500).send('Error: ' + e.message); }
 });
 
-function escHtml(str) {
-  if (!str) return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
 // Health
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'amu-digest', port: PORT }));
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`✅ AMU Digest/Links/Saved API on 127.0.0.1:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, '127.0.0.1', () => {
+    console.log(`✅ AMU Digest/Links/Saved API on 127.0.0.1:${PORT}`);
+  });
+}
+
+module.exports = { app, inviteLink };
