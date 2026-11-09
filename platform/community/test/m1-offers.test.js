@@ -2,6 +2,7 @@
 const { test, describe, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const { startApp, call, provisionClaimedAgent, ADMIN_AUTH } = require("./helpers");
+const { buildOutbound } = require("../lib/clickouts");
 
 const A = "/api/community";
 const OFFER = {
@@ -146,39 +147,90 @@ describe("B42 offer posts", { concurrency: 1 }, () => {
     assert.equal(/\$\d|\d+\s*(USD|CAD)/.test(JSON.stringify(resource)), false);
   });
 
-  test("offer click-out appends opaque sub IDs and does not echo the owner email", async () => {
-    const fresh = await create({ ...OFFER, headline: "Second discussion", destination_url: "https://example.invalid/second" });
+  test("outbound URL builder preserves, encodes, and does not overwrite unless configured", () => {
+    const built = buildOutbound(
+      "https://track.example/click?oid=9&sub1=already&note=a%20b%26c",
+      {
+        sub1: { name: "sub1", value: "SHOULD_NOT" },
+        sub2: { name: "sub2", value: "x y&z" },
+        vid2: { name: "pass_vid2", value: "ech-amu-261109" },
+      },
+      [],
+    );
+    const url = new URL(built);
+    assert.equal(url.searchParams.get("oid"), "9");
+    assert.equal(url.searchParams.get("sub1"), "already");
+    assert.equal(url.searchParams.get("note"), "a b&c");
+    assert.equal(url.searchParams.get("sub2"), "x y&z");
+    assert.equal(url.searchParams.get("pass_vid2"), "ech-amu-261109");
+    assert.equal(built.includes(" "), false);
+    assert.match(built, /sub2=x(?:\+|%20)y%26z/);
+    const replaced = new URL(buildOutbound(
+      "https://track.example/click?sub1=already",
+      { sub1: { name: "sub1", value: "new" } },
+      ["sub1"],
+    ));
+    assert.equal(replaced.searchParams.get("sub1"), "new");
+  });
+
+  test("unconfigured offer click does not guess a provider or add tracker params", async () => {
+    const fresh = await create({
+      ...OFFER,
+      headline: "Second discussion",
+      destination_url: "https://track.buygoods.com/second",
+    });
     assert.equal(fresh.status, 201, JSON.stringify(fresh.body));
     const click = await call(ctx.base, "GET", fresh.body.post.click_path);
     assert.equal(click.status, 302);
     const location = new URL(click.location);
-    assert.equal(location.searchParams.get("sub3"), "amu");
-    assert.equal(location.searchParams.get("sub1").includes("offer-owner"), false);
+    assert.equal(location.hostname, "track.buygoods.com");
+    assert.equal(location.search, "");
+    const row = ctx.db.prepare("SELECT channel, vid2_emitted FROM amu_clickouts WHERE destination_host=?").get("track.buygoods.com");
+    assert.equal(row.channel, "unknown");
+    assert.equal(row.vid2_emitted, null);
     assert.equal(click.location.includes("offer-owner@example.invalid"), false);
-    const again = await call(ctx.base, "GET", fresh.body.post.click_path);
-    assert.equal(again.status, 302);
-    assert.equal(ctx.db.prepare("SELECT COUNT(*) n FROM amu_clickouts").get().n, 1);
   });
 
-  test("buygoods redirect carries the stored vid2 and no unverified tracker params", async () => {
+  test("configured Everflow tracking link 302 places sub1-sub5 and vid2 without overwriting", async () => {
+    const tracking = "https://track.example/click?oid=9&sub1=already&note=a%20b%26c";
     const created = await create({
       ...OFFER,
-      headline: "Buygoods discussion",
-      destination_url: "https://track.buygoods.com/path",
+      headline: "Tracked discussion",
+      destination_url: "https://example.invalid/landing",
+      provider: "everflow",
+      tracking_base: tracking,
+      vid2_funnel: "ech",
+      param_map: {
+        sub1: "sub1",
+        sub2: "sub2",
+        sub3: "sub3",
+        sub4: "sub4",
+        sub5: "sub5",
+        vid2: "pass_vid2",
+      },
     });
     assert.equal(created.status, 201, JSON.stringify(created.body));
     const click = await call(ctx.base, "GET", created.body.post.click_path);
     assert.equal(click.status, 302);
+    const row = ctx.db.prepare("SELECT * FROM amu_clickouts WHERE destination_host=?").get("track.example");
+    const expected = new URL(tracking);
+    expected.searchParams.set("sub2", row.sub2);
+    expected.searchParams.set("sub3", row.sub3);
+    expected.searchParams.set("sub4", row.sub4);
+    expected.searchParams.set("sub5", row.sub5);
+    expected.searchParams.set("pass_vid2", row.vid2_emitted);
+    assert.equal(click.location, expected.toString());
     const location = new URL(click.location);
-    const row = ctx.db
-      .prepare("SELECT vid2_emitted, channel FROM amu_clickouts WHERE destination_host=?")
-      .get("track.buygoods.com");
-    assert.equal(row.channel, "oo_buygoods");
-    assert.match(row.vid2_emitted, /^oo-amu-\d{6}$/);
-    assert.equal(location.searchParams.get("vid2"), row.vid2_emitted);
+    assert.equal(location.searchParams.get("oid"), "9");
+    assert.equal(location.searchParams.get("sub1"), "already");
+    assert.equal(location.searchParams.get("note"), "a b&c");
     assert.equal(location.searchParams.get("sub3"), "amu");
+    assert.equal(location.searchParams.get("sub5"), row.clickout_id);
+    assert.match(location.searchParams.get("pass_vid2"), /^ech-amu-\d{6}$/);
+    assert.equal(row.channel, "everflow");
     assert.equal(location.searchParams.has("source"), false);
     assert.equal(location.searchParams.has("aff_click_id"), false);
     assert.equal(location.searchParams.has("transaction_id"), false);
+    assert.equal(click.location.includes("offer-owner@example.invalid"), false);
   });
 });

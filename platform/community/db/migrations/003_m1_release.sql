@@ -71,7 +71,7 @@ CREATE TABLE amu_clickouts (
   clickout_id TEXT PRIMARY KEY,
   ts_utc TEXT NOT NULL,
   ts_toronto TEXT NOT NULL,
-  channel TEXT NOT NULL CHECK (channel IN ('everflow', 'ringba', 'oo_buygoods', 'other')),
+  channel TEXT NOT NULL CHECK (channel IN ('everflow', 'ringba', 'oo_buygoods', 'other', 'unknown')),
   offer_network_id TEXT,
   vertical TEXT,
   agent_opaque_id TEXT NOT NULL,
