@@ -46,6 +46,7 @@ function recordClick(db, post, ownerId) {
   const dedupe = sha256([agentOpaque, post.post_id, minute].join("|"));
   const existing = db.prepare("SELECT * FROM amu_clickouts WHERE dedupe_key=?").get(dedupe);
   const clickoutId = existing?.clickout_id || newId("clk");
+  const emittedVid2 = existing ? existing.vid2_emitted : vid2(channel, now);
   const sub = {
     sub1: agentOpaque,
     sub2: ownerOpaque,
@@ -53,6 +54,7 @@ function recordClick(db, post, ownerId) {
     sub4: contextOpaque,
     sub5: clickoutId,
   };
+  if (emittedVid2) sub.vid2 = emittedVid2;
   if (!existing) {
     db.prepare(
       `INSERT INTO amu_clickouts(clickout_id,ts_utc,ts_toronto,channel,offer_network_id,vertical,agent_opaque_id,owner_opaque_id,source_tag,context_opaque_id,destination_host,vid2_emitted,sub1,sub2,sub3,sub4,sub5,dedupe_key)
@@ -69,7 +71,7 @@ function recordClick(db, post, ownerId) {
       "amu",
       contextOpaque,
       destination.hostname,
-      vid2(channel, now),
+      emittedVid2,
       sub.sub1,
       sub.sub2,
       sub.sub3,

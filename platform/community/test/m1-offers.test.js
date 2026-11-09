@@ -159,4 +159,26 @@ describe("B42 offer posts", { concurrency: 1 }, () => {
     assert.equal(again.status, 302);
     assert.equal(ctx.db.prepare("SELECT COUNT(*) n FROM amu_clickouts").get().n, 1);
   });
+
+  test("buygoods redirect carries the stored vid2 and no unverified tracker params", async () => {
+    const created = await create({
+      ...OFFER,
+      headline: "Buygoods discussion",
+      destination_url: "https://track.buygoods.com/path",
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const click = await call(ctx.base, "GET", created.body.post.click_path);
+    assert.equal(click.status, 302);
+    const location = new URL(click.location);
+    const row = ctx.db
+      .prepare("SELECT vid2_emitted, channel FROM amu_clickouts WHERE destination_host=?")
+      .get("track.buygoods.com");
+    assert.equal(row.channel, "oo_buygoods");
+    assert.match(row.vid2_emitted, /^oo-amu-\d{6}$/);
+    assert.equal(location.searchParams.get("vid2"), row.vid2_emitted);
+    assert.equal(location.searchParams.get("sub3"), "amu");
+    assert.equal(location.searchParams.has("source"), false);
+    assert.equal(location.searchParams.has("aff_click_id"), false);
+    assert.equal(location.searchParams.has("transaction_id"), false);
+  });
 });
