@@ -179,6 +179,28 @@ function validateOffer(db, raw, body) {
   return { metadata, disclosure };
 }
 
+const PUBLIC_METADATA_KEYS = [
+  "schema_version",
+  "headline",
+  "vertical",
+  "destination_url",
+  "disclosure_ack",
+  "network_name",
+  "advertiser_name",
+  "geo_scope",
+  "asset_kinds",
+  "seeking",
+];
+
+function publicOfferMetadata(metadata) {
+  const source = metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
+  const out = {};
+  for (const key of PUBLIC_METADATA_KEYS) {
+    if (Object.hasOwn(source, key)) out[key] = source[key];
+  }
+  return out;
+}
+
 function offerFromRow(db, row) {
   if (!row || row.type !== "offer") return null;
   let metadata = {};
@@ -192,4 +214,4 @@ function offerFromRow(db, row) {
   return { metadata, disclosure };
 }
 
-module.exports = { validateOffer, offerFromRow, fillDisclosure };
+module.exports = { validateOffer, offerFromRow, fillDisclosure, publicOfferMetadata };

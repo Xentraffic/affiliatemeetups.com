@@ -299,6 +299,9 @@ button.primary {
 .sponsored-block {
   display: block;
 }
+.sponsored-block .sponsored-cta {
+  margin-top: 8px;
+}
 .badge.pin-mod {
   border-style: dashed;
 }

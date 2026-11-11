@@ -707,7 +707,14 @@ async function digest() {
       esc(d.sponsored_strip.headline) +
       "</h2><p>" +
       esc(d.sponsored_strip.body || "") +
-      "</p></aside>"
+      '</p><p><a class="button sponsored-cta" rel="sponsored noopener" href="' +
+      esc(
+        d.sponsored_strip.click_path ||
+          BASE + "/api/community/sponsored/" + encodeURIComponent(d.sponsored_strip.placement_id) + "/click",
+      ) +
+      '">' +
+      esc(d.sponsored_strip.cta_label || "Visit sponsor") +
+      "</a></p></aside>"
     : "";
   content.innerHTML =
     '<div class="hero"><p class="label">COMMUNITY REPORT · AMERICA/TORONTO</p><h1>🌅 Daily Digest</h1><p>' +

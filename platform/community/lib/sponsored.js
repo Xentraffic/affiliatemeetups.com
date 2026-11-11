@@ -1,5 +1,6 @@
 "use strict";
-const { newId, nowIso } = require("./ids");
+const crypto = require("crypto");
+const { newId, nowIso, sha256 } = require("./ids");
 const { requireAdmin, requireOwner } = require("./auth");
 const { setting, slotEnabled } = require("./settings");
 const { offerFromRow } = require("./offers");
@@ -32,6 +33,15 @@ function labelPack(db) {
   };
 }
 
+function clickPath(placementId) {
+  return (process.env.COMMUNITY_BASE_PATH || "") + "/api/community/sponsored/" + placementId + "/click";
+}
+
+function ctaLabel(row) {
+  const label = String(row.cta_label || "").trim();
+  return label || "Visit sponsor";
+}
+
 function publicSlot(db, row) {
   if (!row) return null;
   let disclosure = null;
@@ -52,6 +62,8 @@ function publicSlot(db, row) {
     headline: row.headline,
     body: row.body,
     destination_url: row.destination_url,
+    cta_label: ctaLabel(row),
+    click_path: clickPath(row.placement_id),
     disclosure,
     disclosure_label: disclosure?.label || null,
   };
@@ -81,6 +93,8 @@ function todayKey() {
   return require("./toronto").torontoDate(Date.now());
 }
 
+// Left in place for a future signed or server-side view signal. Public GETs
+// must not call this: impression rows are not billing-quality counts.
 function remember(db, row) {
   if (!row) return null;
   db.prepare(
@@ -106,7 +120,109 @@ function feedSlot(db, { roomSlug = null, surface = "feed", sandbox = false } = {
   if (roomSlug === "offers-partners") order.push(pick(db, "featured_offer", roomId));
   if (roomId) order.push(pick(db, "paid_pin", roomId));
   const chosen = order.find(Boolean) || null;
-  return remember(db, chosen);
+  return publicSlot(db, chosen);
+}
+
+// A counted sponsored click is indicative, not billable.
+// It is the first request in COMMUNITY_SPONSORED_CLICK_DEDUPE_MS (default 30
+// minutes) for one placement and one visitor key, while that IP is still under
+// COMMUNITY_SPONSORED_CLICK_IP_LIMIT (default 30) per
+// COMMUNITY_SPONSORED_CLICK_IP_WINDOW_MS (default 10 minutes).
+// The visitor key is SHA-256(salt, placement id, IP, User-Agent). The IP
+// rate-limit key is SHA-256(salt, IP). Raw IPs and user-agents are not stored.
+// Salt is COMMUNITY_RATE_SECRET, or a process-local random value when unset.
+// Duplicate and over-limit requests still redirect and are not counted.
+// Unknown, inactive, flag-off, not-yet-started, and expired placements do not
+// redirect: they return 404 and write nothing.
+const DEDUPE_MS = 30 * 60 * 1000;
+const IP_WINDOW_MS = 10 * 60 * 1000;
+const IP_LIMIT = 30;
+const DEDUPE_CAP = 10000;
+const fallbackSalt = crypto.randomBytes(32).toString("hex");
+
+function positiveInt(name, fallback) {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : fallback;
+}
+
+function clickSalt() {
+  return process.env.COMMUNITY_RATE_SECRET || fallbackSalt;
+}
+
+function clientIp(req) {
+  return String(req.ip || req.socket?.remoteAddress || "");
+}
+
+function placementOpen(row, today) {
+  return !!(row && row.active && row.starts_on <= today && row.ends_on >= today);
+}
+
+function eligibleClick(db, row, today) {
+  return placementOpen(row, today) && !!slotEnabled(db, FLAG_FOR[row.slot_type]);
+}
+
+function pruneClickDedupe(db) {
+  const now = Date.now();
+  db.prepare("DELETE FROM sponsored_click_dedupe WHERE expires_at<=?").run(now);
+  const cap = positiveInt("COMMUNITY_SPONSORED_CLICK_DEDUPE_CAP", DEDUPE_CAP);
+  const n = db.prepare("SELECT COUNT(*) n FROM sponsored_click_dedupe").get().n;
+  if (n > cap) {
+    db.prepare(
+      `DELETE FROM sponsored_click_dedupe WHERE dedupe_key IN (
+         SELECT dedupe_key FROM sponsored_click_dedupe ORDER BY expires_at ASC LIMIT ?
+       )`,
+    ).run(n - cap);
+  }
+}
+
+function ipClickAllowed(db, bucket, limit, windowMs) {
+  const now = Date.now();
+  db.prepare("DELETE FROM rate_buckets WHERE bucket LIKE 'sponsored-click-ip:%' AND expires_at<=?").run(now);
+  const row = db.prepare("SELECT hits, expires_at FROM rate_buckets WHERE bucket=?").get(bucket);
+  if (!row || row.expires_at <= now) {
+    db.prepare(
+      "INSERT INTO rate_buckets(bucket,hits,expires_at) VALUES(?,?,?) ON CONFLICT(bucket) DO UPDATE SET hits=1, expires_at=excluded.expires_at",
+    ).run(bucket, 1, now + windowMs);
+    return true;
+  }
+  if (row.hits >= limit) return false;
+  db.prepare("UPDATE rate_buckets SET hits=hits+1 WHERE bucket=?").run(bucket);
+  return true;
+}
+
+// Writes click_count and the click event in one transaction. beforeEvent, when
+// it throws, rolls both back. Returns "counted", "deduped", or "ineligible".
+function recordSponsoredClick(db, { placementId, dedupeKey, expiresAt, today, beforeEvent } = {}) {
+  const run = db.transaction(() => {
+    const open = db
+      .prepare(
+        "SELECT 1 FROM sponsored_placements WHERE placement_id=? AND active=1 AND starts_on<=? AND ends_on>=?",
+      )
+      .get(placementId, today, today);
+    if (!open) return "ineligible";
+    const inserted = db
+      .prepare(
+        "INSERT INTO sponsored_click_dedupe(dedupe_key,placement_id,expires_at) VALUES(?,?,?) ON CONFLICT(dedupe_key) DO NOTHING",
+      )
+      .run(dedupeKey, placementId, expiresAt);
+    if (inserted.changes !== 1) return "deduped";
+    const updated = db
+      .prepare(
+        "UPDATE sponsored_placements SET click_count=click_count+1 WHERE placement_id=? AND active=1 AND starts_on<=? AND ends_on>=?",
+      )
+      .run(placementId, today, today);
+    if (updated.changes !== 1) throw new Error("click_count_not_updated");
+    if (beforeEvent) beforeEvent();
+    db.prepare("INSERT INTO sponsored_events VALUES(?,?,?,?,?)").run(
+      newId("sev"),
+      placementId,
+      "click",
+      "sponsored",
+      nowIso(),
+    );
+    return "counted";
+  });
+  return run();
 }
 
 function digestStrip(db, date) {
@@ -116,7 +232,7 @@ function digestStrip(db, date) {
       `SELECT * FROM sponsored_placements WHERE slot_type='digest_strip' AND active=1 AND room_id IS NULL AND starts_on<=? AND ends_on>=? ORDER BY created_at_utc, placement_id LIMIT 1`,
     )
     .get(date, date);
-  return remember(db, row);
+  return publicSlot(db, row);
 }
 
 function installSponsored(app, db) {
@@ -131,20 +247,33 @@ function installSponsored(app, db) {
   };
   app.get("/api/community/sponsored/:placement_id/click", (req, res, next) => {
     try {
-      const row = db
-        .prepare("SELECT * FROM sponsored_placements WHERE placement_id=? AND active=1")
-        .get(req.params.placement_id);
-      if (!row || !slotEnabled(db, FLAG_FOR[row.slot_type])) return res.status(404).json({ ok: false, error: "not_found" });
-      db.prepare(
-        "UPDATE sponsored_placements SET click_count=click_count+1 WHERE placement_id=?",
-      ).run(row.placement_id);
-      db.prepare("INSERT INTO sponsored_events VALUES(?,?,?,?,?)").run(
-        newId("sev"),
-        row.placement_id,
-        "click",
-        "sponsored",
-        nowIso(),
+      const today = todayKey();
+      const row = db.prepare("SELECT * FROM sponsored_placements WHERE placement_id=?").get(req.params.placement_id);
+      // Ineligible placements are not a click and are not a redirect.
+      if (!eligibleClick(db, row, today)) return res.status(404).json({ ok: false, error: "not_found" });
+      const ip = clientIp(req);
+      const ipKey = "sponsored-click-ip:" + sha256(clickSalt() + "\nip\n" + ip);
+      if (
+        !ipClickAllowed(
+          db,
+          ipKey,
+          positiveInt("COMMUNITY_SPONSORED_CLICK_IP_LIMIT", IP_LIMIT),
+          positiveInt("COMMUNITY_SPONSORED_CLICK_IP_WINDOW_MS", IP_WINDOW_MS),
+        )
+      ) {
+        return res.redirect(302, row.destination_url);
+      }
+      pruneClickDedupe(db);
+      const dedupeKey = sha256(
+        clickSalt() + "\nvisitor\n" + row.placement_id + "\n" + ip + "\n" + (req.get("user-agent") || ""),
       );
+      const outcome = recordSponsoredClick(db, {
+        placementId: row.placement_id,
+        dedupeKey,
+        expiresAt: Date.now() + positiveInt("COMMUNITY_SPONSORED_CLICK_DEDUPE_MS", DEDUPE_MS),
+        today,
+      });
+      if (outcome === "ineligible") return res.status(404).json({ ok: false, error: "not_found" });
       res.redirect(302, row.destination_url);
     } catch (e) {
       next(e);
@@ -194,6 +323,20 @@ function installSponsored(app, db) {
         e.status = 400;
         throw e;
       }
+      let cta = "";
+      if (req.body.cta_label != null && req.body.cta_label !== "") {
+        if (typeof req.body.cta_label !== "string") {
+          const e = Error("invalid_text");
+          e.status = 400;
+          throw e;
+        }
+        cta = req.body.cta_label.trim();
+        if (!cta || cta.length > 40 || /[\u0000-\u001f]/.test(cta)) {
+          const e = Error("invalid_text");
+          e.status = 400;
+          throw e;
+        }
+      }
       const starts = String(req.body.starts_on || "");
       const ends = String(req.body.ends_on || "");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(starts) || !/^\d{4}-\d{2}-\d{2}$/.test(ends)) {
@@ -241,8 +384,8 @@ function installSponsored(app, db) {
       const id = newId("spk");
       const now = nowIso();
       db.prepare(
-        `INSERT INTO sponsored_placements(placement_id,slot_type,room_id,target_post_id,headline,body,destination_url,active,internal_notes,starts_on,ends_on,created_at_utc,updated_at_utc)
-         VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?)`,
+        `INSERT INTO sponsored_placements(placement_id,slot_type,room_id,target_post_id,headline,body,destination_url,cta_label,active,internal_notes,starts_on,ends_on,created_at_utc,updated_at_utc)
+         VALUES(?,?,?,?,?,?,?,?,1,?,?,?,?,?)`,
       ).run(
         id,
         slot,
@@ -251,6 +394,7 @@ function installSponsored(app, db) {
         headline,
         String(req.body.body || ""),
         destination.toString(),
+        cta,
         String(req.body.internal_notes || ""),
         starts,
         ends,
@@ -298,4 +442,12 @@ function installSponsored(app, db) {
   );
 }
 
-module.exports = { SLOT_TYPES, feedSlot, digestStrip, publicSlot, installSponsored, labelPack };
+module.exports = {
+  SLOT_TYPES,
+  feedSlot,
+  digestStrip,
+  publicSlot,
+  installSponsored,
+  labelPack,
+  recordSponsoredClick,
+};
