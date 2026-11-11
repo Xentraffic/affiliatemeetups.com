@@ -54,7 +54,14 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
   app.disable('x-powered-by');
   app.set('trust proxy','loopback');
   const basePath=process.env.COMMUNITY_BASE_PATH||'';
-  if(basePath)app.use((req,res,next)=>{if(!req.url.startsWith(basePath+'/'))return res.sendStatus(404);req.url=req.url.slice(basePath.length);next();});
+  if(basePath)app.use((req,res,next)=>{
+    // Browsers request /favicon.ico at the origin even when the app is mounted
+    // under a prefix. Let that one path through; every other URL still needs the prefix.
+    if(req.url==='/favicon.ico'||req.url.startsWith('/favicon.ico?'))return next();
+    if(!req.url.startsWith(basePath+'/'))return res.sendStatus(404);
+    req.url=req.url.slice(basePath.length);
+    next();
+  });
   app.use(cors({
     origin: [
       'https://affiliatemeetups.com',

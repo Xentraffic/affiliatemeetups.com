@@ -391,6 +391,12 @@ function installRelease(app, db) {
       next(e);
     }
   });
+  function sendFavicon(res) {
+    res.type('image/x-icon');
+    res.sendFile(path.join(ROOT, 'favicon.ico'));
+  }
+  app.get('/favicon.ico', (req, res) => sendFavicon(res));
+  app.get('/community/favicon.ico', (req, res) => sendFavicon(res));
   app.get('/community/style.css', (req, res) =>
     res.sendFile(path.join(ROOT, 'style.css')),
   );

@@ -235,4 +235,146 @@ describe("sponsored slots", { concurrency: 1 }, () => {
     assert.deepEqual(after, before);
     assert.equal(eventsAfter, eventsBefore);
   });
+
+  test("enabled placement click records one sponsored click and redirects to the destination", async () => {
+    await flags({ slot_digest_enabled: true });
+    const created = await place({
+      slot_type: "digest_strip",
+      headline: "Clickable sponsor",
+      body: "A labelled paid strip.",
+      destination_url: "https://sponsor.example/cta-destination",
+      cta_label: "Open the sponsor",
+      starts_on: "2026-01-01",
+      ends_on: "2026-12-31",
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.placement.placement_id;
+    assert.equal(created.body.placement.cta_label, "Open the sponsor");
+    assert.equal(created.body.placement.click_path, A + "/sponsored/" + id + "/click");
+    const beforeClicks = ctx.db.prepare("SELECT click_count FROM sponsored_placements WHERE placement_id=?").get(id).click_count;
+    const beforeEvents = ctx.db.prepare("SELECT COUNT(*) n FROM sponsored_events WHERE placement_id=? AND kind='click'").get(id).n;
+    const beforeAll = ctx.db.prepare("SELECT COUNT(*) n FROM sponsored_events WHERE kind='click'").get().n;
+    const click = await call(ctx.base, "GET", A + "/sponsored/" + id + "/click");
+    assert.equal(click.status, 302);
+    assert.equal(click.location, "https://sponsor.example/cta-destination");
+    assert.equal(ctx.db.prepare("SELECT click_count FROM sponsored_placements WHERE placement_id=?").get(id).click_count, beforeClicks + 1);
+    assert.equal(ctx.db.prepare("SELECT COUNT(*) n FROM sponsored_events WHERE placement_id=? AND kind='click'").get(id).n, beforeEvents + 1);
+    assert.equal(ctx.db.prepare("SELECT COUNT(*) n FROM sponsored_events WHERE kind='click'").get().n, beforeAll + 1);
+  });
+
+  test("disabled and unknown placements record no click", async () => {
+    await flags({ slot_digest_enabled: true });
+    const created = await place({
+      slot_type: "digest_strip",
+      headline: "Inactive sponsor",
+      destination_url: "https://sponsor.example/disabled-cta",
+      starts_on: "2026-01-01",
+      ends_on: "2026-12-31",
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.placement.placement_id;
+    const snap = () => ({
+      clicks: ctx.db.prepare("SELECT click_count FROM sponsored_placements WHERE placement_id=?").get(id).click_count,
+      events: ctx.db.prepare("SELECT COUNT(*) n FROM sponsored_events WHERE kind='click'").get().n,
+    });
+    ctx.db.prepare("UPDATE sponsored_placements SET active=0 WHERE placement_id=?").run(id);
+    const before = snap();
+    const inactive = await call(ctx.base, "GET", A + "/sponsored/" + id + "/click");
+    assert.equal(inactive.status, 404);
+    assert.equal(inactive.location, null);
+    ctx.db.prepare("UPDATE sponsored_placements SET active=1 WHERE placement_id=?").run(id);
+    await flags({ slot_digest_enabled: false });
+    const flagged = await call(ctx.base, "GET", A + "/sponsored/" + id + "/click");
+    assert.equal(flagged.status, 404);
+    assert.equal(flagged.location, null);
+    const missing = await call(ctx.base, "GET", A + "/sponsored/spk-missing/click");
+    assert.equal(missing.status, 404);
+    assert.equal(missing.location, null);
+    assert.deepEqual(snap(), before);
+    await flags({ slot_digest_enabled: true });
+  });
+
+  test("digest GET writes no impressions and exposes the sponsored CTA", async () => {
+    await flags({ slot_digest_enabled: true });
+    const created = await place({
+      slot_type: "digest_strip",
+      headline: "Digest CTA sponsor",
+      destination_url: "https://sponsor.example/digest-cta",
+      starts_on: "2026-01-01",
+      ends_on: "2026-12-31",
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const impressions = () => ({
+      events: ctx.db.prepare("SELECT COUNT(*) n FROM sponsored_events WHERE kind='impression'").get().n,
+      count: ctx.db.prepare("SELECT COALESCE(SUM(impression_count),0) n FROM sponsored_placements").get().n,
+    });
+    const before = impressions();
+    const first = await call(ctx.base, "GET", A + "/reports/daily?date=2026-11-10");
+    const second = await call(ctx.base, "GET", A + "/reports/daily?date=2026-11-10");
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    const strip = first.body.sponsored_strip;
+    assert.ok(strip && strip.placement_id);
+    assert.equal(strip.click_path, A + "/sponsored/" + strip.placement_id + "/click");
+    assert.equal(strip.sponsorship_label, "Sponsored");
+    assert.ok(strip.cta_label);
+    assert.match(first.body.report_md, /## Sponsored/);
+    assert.ok(first.body.report_md.includes(strip.sponsorship_label));
+    assert.ok(first.body.report_md.includes(strip.cta_label + ": " + strip.click_path));
+    assert.deepEqual(impressions(), before);
+    const source = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
+    assert.match(source, /rel="sponsored noopener"/);
+    assert.match(source, /sponsored_strip\.click_path/);
+    const icon = await fetch(ctx.base + "/favicon.ico");
+    assert.equal(icon.status, 200);
+    assert.match(icon.headers.get("content-type") || "", /icon/);
+    const page = await fetch(ctx.base + "/community");
+    assert.match(await page.text(), /rel="icon"/);
+  });
+
+  test("digest CTA href includes the /staging base path", async () => {
+    process.env.COMMUNITY_BASE_PATH = "/staging";
+    const staged = await startApp();
+    try {
+      assert.equal(
+        (await call(staged.base, "POST", "/staging" + A + "/admin/sponsored/flags", {
+          auth: ADMIN_AUTH,
+          body: { slot_digest_enabled: true },
+        })).status,
+        200,
+      );
+      const created = await call(staged.base, "POST", "/staging" + A + "/admin/sponsored/placements", {
+        auth: ADMIN_AUTH,
+        body: {
+          slot_type: "digest_strip",
+          headline: "Staging sponsor",
+          destination_url: "https://sponsor.example/staging-cta",
+          starts_on: "2026-01-01",
+          ends_on: "2026-12-31",
+        },
+      });
+      assert.equal(created.status, 201, JSON.stringify(created.body));
+      const id = created.body.placement.placement_id;
+      const href = "/staging/api/community/sponsored/" + id + "/click";
+      assert.equal(created.body.placement.click_path, href);
+      assert.equal(created.body.placement.cta_label, "Visit sponsor");
+      const digest = await call(staged.base, "GET", "/staging" + A + "/reports/daily?date=2026-11-10");
+      assert.equal(digest.status, 200);
+      assert.equal(digest.body.sponsored_strip.click_path, href);
+      assert.ok(digest.body.report_md.includes(href));
+      const click = await call(staged.base, "GET", href);
+      assert.equal(click.status, 302);
+      assert.equal(click.location, "https://sponsor.example/staging-cta");
+      assert.equal(staged.db.prepare("SELECT click_count FROM sponsored_placements WHERE placement_id=?").get(id).click_count, 1);
+      const bare = await fetch(staged.base + "/api/community/reports/daily?date=2026-11-10");
+      assert.equal(bare.status, 404);
+      const icon = await fetch(staged.base + "/favicon.ico");
+      assert.equal(icon.status, 200);
+      const prefixedIcon = await fetch(staged.base + "/staging/community/favicon.ico");
+      assert.equal(prefixedIcon.status, 200);
+    } finally {
+      delete process.env.COMMUNITY_BASE_PATH;
+      await staged.close();
+    }
+  });
 });

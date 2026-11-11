@@ -428,6 +428,7 @@ function renderMarkdown(report) {
       report.sponsored_strip.sponsorship_label,
       report.sponsored_strip.sponsorship_disclosure,
       report.sponsored_strip.headline,
+      report.sponsored_strip.cta_label + ": " + report.sponsored_strip.click_path,
     );
   }
   return lines.join("\n");

@@ -32,6 +32,15 @@ function labelPack(db) {
   };
 }
 
+function clickPath(placementId) {
+  return (process.env.COMMUNITY_BASE_PATH || "") + "/api/community/sponsored/" + placementId + "/click";
+}
+
+function ctaLabel(row) {
+  const label = String(row.cta_label || "").trim();
+  return label || "Visit sponsor";
+}
+
 function publicSlot(db, row) {
   if (!row) return null;
   let disclosure = null;
@@ -52,6 +61,8 @@ function publicSlot(db, row) {
     headline: row.headline,
     body: row.body,
     destination_url: row.destination_url,
+    cta_label: ctaLabel(row),
+    click_path: clickPath(row.placement_id),
     disclosure,
     disclosure_label: disclosure?.label || null,
   };
@@ -196,6 +207,20 @@ function installSponsored(app, db) {
         e.status = 400;
         throw e;
       }
+      let cta = "";
+      if (req.body.cta_label != null && req.body.cta_label !== "") {
+        if (typeof req.body.cta_label !== "string") {
+          const e = Error("invalid_text");
+          e.status = 400;
+          throw e;
+        }
+        cta = req.body.cta_label.trim();
+        if (!cta || cta.length > 40 || /[\u0000-\u001f]/.test(cta)) {
+          const e = Error("invalid_text");
+          e.status = 400;
+          throw e;
+        }
+      }
       const starts = String(req.body.starts_on || "");
       const ends = String(req.body.ends_on || "");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(starts) || !/^\d{4}-\d{2}-\d{2}$/.test(ends)) {
@@ -243,8 +268,8 @@ function installSponsored(app, db) {
       const id = newId("spk");
       const now = nowIso();
       db.prepare(
-        `INSERT INTO sponsored_placements(placement_id,slot_type,room_id,target_post_id,headline,body,destination_url,active,internal_notes,starts_on,ends_on,created_at_utc,updated_at_utc)
-         VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?)`,
+        `INSERT INTO sponsored_placements(placement_id,slot_type,room_id,target_post_id,headline,body,destination_url,cta_label,active,internal_notes,starts_on,ends_on,created_at_utc,updated_at_utc)
+         VALUES(?,?,?,?,?,?,?,?,1,?,?,?,?,?)`,
       ).run(
         id,
         slot,
@@ -253,6 +278,7 @@ function installSponsored(app, db) {
         headline,
         String(req.body.body || ""),
         destination.toString(),
+        cta,
         String(req.body.internal_notes || ""),
         starts,
         ends,
