@@ -54,6 +54,19 @@ before(async () => {
   db.prepare(
     "UPDATE posts SET hidden_at='2026-11-06T23:59:00.000Z' WHERE post_id='hidden'",
   ).run();
+  const cover = db.prepare("INSERT INTO day_coverage(day,status) VALUES(?,'complete')");
+  for (const day of [
+    "2026-10-30",
+    "2026-10-31",
+    "2026-11-01",
+    "2026-11-02",
+    "2026-11-03",
+    "2026-11-04",
+    "2026-11-05",
+    "2026-11-06",
+    "2026-11-07",
+  ])
+    cover.run(day);
 });
 after(async () => ctx.close());
 test("daily report includes summary and all nine measured awards without private data", async () => {
@@ -74,15 +87,16 @@ test("daily report includes summary and all nine measured awards without private
     r.body.awards.find((a) => a.key === "connector").winner.value,
     1,
   );
+  assert.equal(r.body.timezone, "America/Toronto");
   assert.equal(r.body.awards.find((a) => a.key === "streak").winner.value, 2);
-  assert.equal(
-    r.body.awards.find((a) => a.key === "momentum").winner.value,
-    21,
-  );
-  assert.equal(
-    r.body.awards.find((a) => a.key === "reactions").winner.value,
-    1,
-  );
+  assert.equal(r.body.awards.find((a) => a.key === "night").winner.value, 2);
+  assert.equal(r.body.awards.find((a) => a.key === "momentum").status, "omitted");
+  assert.equal(r.body.awards.find((a) => a.key === "momentum").winner, null);
+  const votes = r.body.awards.find((a) => a.key === "votes");
+  assert.equal(votes.winner.value, 1);
+  assert.match(votes.label, /vote/i);
+  assert.match(votes.unit, /vote/i);
+  assert.equal(/reaction|emoji/i.test(votes.label + votes.unit + r.body.definitions.votes), false);
   assert(r.body.summary.length > 0);
   assert(!JSON.stringify(r.body).includes("@example.invalid"));
   assert(!r.body.threads.some((p) => p.post_id === "hidden"));

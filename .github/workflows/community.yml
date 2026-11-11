@@ -11,10 +11,14 @@ on:
     branches: [main, 'feat/**']
     paths:
       - 'platform/community/**'
+      - 'platform/api-members.js'
+      - 'platform/serve-digest.js'
       - '.github/workflows/community.yml'
   pull_request:
     paths:
       - 'platform/community/**'
+      - 'platform/api-members.js'
+      - 'platform/serve-digest.js'
       - '.github/workflows/community.yml'
 
 jobs:

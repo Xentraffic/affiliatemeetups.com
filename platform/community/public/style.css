@@ -288,6 +288,20 @@ button.primary {
   border-radius: 3px;
   color: var(--green);
 }
+.disclosure,
+.sponsored-block {
+  background: #f4efe4;
+  border: 1px solid #d9c9a3;
+  color: #1c1f1a;
+  padding: 8px 10px;
+  margin: 0 0 12px;
+}
+.sponsored-block {
+  display: block;
+}
+.badge.pin-mod {
+  border-style: dashed;
+}
 .tag {
   font-size: 10px;
   background: var(--soft);

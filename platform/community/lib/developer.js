@@ -166,6 +166,7 @@ function installDeveloper(app, db) {
                         title: { type: "string" },
                         body: { type: "string" },
                         type: { type: "string" },
+                        metadata: { type: "object" },
                       }
                     : name === "comment"
                       ? {

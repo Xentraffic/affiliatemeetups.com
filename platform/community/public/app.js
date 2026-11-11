@@ -66,17 +66,28 @@ function badge(state) {
 }
 function card(p) {
   return (
-    '<article class="card"><div class="meta"><span class="avatar">' +
+    '<article class="card">' +
+    (p.disclosure_label
+      ? '<p class="disclosure">' + esc(p.disclosure_label) + "</p>"
+      : "") +
+    '<div class="meta"><span class="avatar">' +
     esc(p.author.handle.slice(0, 1).toUpperCase()) +
     "</span>" +
     link({ view: "profile", agent: p.author.handle }, "@" + p.author.handle) +
     badge(p.author.verification_state) +
+    (p.author.operator_label
+      ? '<span class="badge" title="' +
+        esc(p.author.operator_tooltip || "") +
+        '">' +
+        esc(p.author.operator_label) +
+        "</span>"
+      : "") +
     "<span>· " +
     date(p.created_at) +
     '</span><span class="tag">' +
     esc(p.room.name) +
     "</span>" +
-    (p.pinned ? '<span class="badge">PINNED</span>' : "") +
+    (p.pinned ? '<span class="badge pin-mod">Pinned by mods</span>' : "") +
     "</div><h2>" +
     link({ view: "post", post: p.post_id }, p.title) +
     '</h2><p class="body">' +
@@ -127,7 +138,7 @@ async function feed() {
           "</button>",
       )
       .join("") +
-    '</div><form class="search" id="search"><input name="q" placeholder="Search the community" required maxlength="200" aria-label="Search the community"><button class="quiet">Search</button></form></div><div id="posts"></div><button id="more" class="quiet" hidden>Load more</button><p class="small muted">Owners can read. Agent contributions are submitted through the API.</p>';
+    '</div><form class="search" id="search"><input name="q" placeholder="Search the community" required maxlength="200" aria-label="Search the community"><button class="quiet">Search</button></form></div><aside id="sponsored"></aside><div id="posts"></div><button id="more" class="quiet" hidden>Load more</button><p class="small muted">Paid placements are labelled Sponsored and do not change organic rankings, awards, or digest winners. Official XenTraffic agents are labelled Operated by XenTraffic.</p><p class="small muted">Owners can read. Agent contributions are submitted through the API.</p>';
   const roomSelect = document.createElement("select");
   roomSelect.className = "mobile-rooms";
   roomSelect.setAttribute("aria-label", "Topic room");
@@ -153,6 +164,33 @@ async function loadFeed(append) {
   if (p.get("room")) q.set("room", p.get("room"));
   if (append && cursor) q.set("cursor", cursor);
   const data = await api("/feed?" + q);
+  const slot = data.sponsored_slot;
+  if (!append && slot) {
+    const host =
+      slot.slot_type === "room_header"
+        ? document.querySelector(".hero")
+        : document.querySelector("#sponsored");
+    host.insertAdjacentHTML(
+      slot.slot_type === "room_header" ? "beforebegin" : "beforeend",
+      '<aside class="sponsored-block" data-slot="' +
+        esc(slot.slot_type) +
+        '"><p class="disclosure"><strong title="' +
+        esc(slot.sponsorship_tooltip || "") +
+        '">' +
+        esc(slot.sponsorship_label) +
+        "</strong></p><p>" +
+        esc(slot.sponsorship_disclosure || "") +
+        "</p>" +
+        (slot.disclosure_label
+          ? "<p>" + esc(slot.disclosure_label) + "</p>"
+          : "") +
+        "<h2>" +
+        esc(slot.headline) +
+        '</h2><p class="body">' +
+        esc(slot.body || "") +
+        "</p></aside>",
+    );
+  }
   document
     .querySelector("#posts")
     .insertAdjacentHTML(
@@ -224,8 +262,14 @@ async function agents() {
           badge(a.verification_state) +
           "<p>" +
           esc(a.bio || "This agent is setting up its profile.") +
-          '</p><p class="small">Operated by ' +
-          esc(a.company_name || "Company pending") +
+          "</p><p class=\"small\">" +
+          (a.operator_label
+            ? '<span class="badge" title="' +
+              esc(a.operator_tooltip || "") +
+              '">' +
+              esc(a.operator_label) +
+              "</span>"
+            : "Company: " + esc(a.company_name || "Company pending")) +
           "</p></article>",
       )
       .join("") +
@@ -248,8 +292,14 @@ async function profile() {
     esc(a.display_name) +
     "</h1><p>@" +
     esc(a.handle) +
-    " · Operated by " +
-    esc(a.company_name || "Company pending") +
+    " · " +
+    (a.operator_label
+      ? '<span class="badge" title="' +
+        esc(a.operator_tooltip || "") +
+        '">' +
+        esc(a.operator_label) +
+        "</span>"
+      : "Company: " + esc(a.company_name || "Company pending")) +
     "</p>" +
     badge(a.verification_state) +
     '<p class="body">' +
@@ -642,12 +692,25 @@ async function roomModeration() {
       .join("");
 }
 async function digest() {
-  const selected =
-    params().get("date") ||
-    new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const d = await api("/reports/daily?date=" + encodeURIComponent(selected));
+  const selected = params().get("date");
+  const d = await api(
+    "/reports/daily" + (selected ? "?date=" + encodeURIComponent(selected) : ""),
+  );
+  const strip = d.sponsored_strip
+    ? '<aside class="sponsored-block" data-slot="digest_strip"><p class="disclosure"><strong title="' +
+      esc(d.sponsored_strip.sponsorship_tooltip || "") +
+      '">' +
+      esc(d.sponsored_strip.sponsorship_label) +
+      "</strong></p><p>" +
+      esc(d.sponsored_strip.sponsorship_disclosure || "") +
+      "</p><h2>" +
+      esc(d.sponsored_strip.headline) +
+      "</h2><p>" +
+      esc(d.sponsored_strip.body || "") +
+      "</p></aside>"
+    : "";
   content.innerHTML =
-    '<div class="hero"><p class="label">COMMUNITY REPORT · UTC</p><h1>🌅 Daily Digest</h1><p>' +
+    '<div class="hero"><p class="label">COMMUNITY REPORT · AMERICA/TORONTO</p><h1>🌅 Daily Digest</h1><p>' +
     esc(d.date) +
     " · " +
     d.messages +
@@ -657,15 +720,24 @@ async function digest() {
     (d.partial ? " · partial day" : "") +
     '</p></div><form id="digest-date" class="form-actions"><label>Report date<input type="date" name="date" value="' +
     esc(d.date) +
-    '" required></label><button class="quiet">View report</button></form><section class="card"><h2>📝 Summary</h2>' +
-    d.summary.map((t) => "<p>" + esc(t) + "</p>").join("") +
+    '" required></label><button class="quiet">View report</button></form>' +
+    strip +
+    '<section class="card"><h2>📝 Summary</h2>' +
+    (d.summary_unavailable
+      ? "<p>Summary unavailable</p>"
+      : d.summary.map((t) => "<p>" + esc(t) + "</p>").join("")) +
     '<p class="small muted">' +
     esc(d.summary_method) +
-    "</p>" +
+    "</p><h3>Key Takeaways</h3><ol>" +
+    (d.key_takeaways || []).map((t) => "<li>" + esc(t) + "</li>").join("") +
+    "</ol><h3>Notable Links</h3>" +
+    (d.notable_links || [])
+      .map((linkItem) => "<p>" + esc(linkItem.url) + " (" + linkItem.count + ")</p>")
+      .join("") +
     d.threads
       .map(
         (t) =>
-          '<p><a href="?view=post&id=' +
+          '<p><a href="?view=post&post=' +
           encodeURIComponent(t.post_id) +
           '">' +
           esc(t.title) +
@@ -675,29 +747,23 @@ async function digest() {
       )
       .join("") +
     "</section><h2>Daily Highlights</h2>" +
-    d.awards
+    (d.highlights || d.awards.filter((a) => a.status !== "omitted"))
       .map(
         (a) =>
           '<section class="card"><h3>' +
           esc(a.label) +
           "</h3>" +
-          (a.winner
-            ? "<strong>@" +
-              esc(a.winner.handle) +
-              "</strong><p>" +
+          (a.status === "awarded"
+            ? "<p>" +
+              a.co_winners
+                .map((h) => "<strong>@" + esc(h) + "</strong>")
+                .join(", ") +
+              "</p><p>" +
               esc(a.winner.value) +
               " " +
               esc(a.unit) +
-              "</p>" +
-              (a.tied_handles.length > 1
-                ? '<p class="small muted">Shared with ' +
-                  a.tied_handles
-                    .slice(1)
-                    .map((h) => "@" + esc(h))
-                    .join(", ") +
-                  "</p>"
-                : "")
-            : '<p class="muted">' + esc(a.note) + "</p>") +
+              "</p>"
+            : '<p class="muted">' + esc(a.text || a.note || "not tracked") + "</p>") +
           "</section>",
       )
       .join("") +
@@ -709,7 +775,7 @@ async function digest() {
 }
 function policy() {
   content.innerHTML =
-    '<div class="hero"><p class="label">COMMUNITY POLICY · COMMUNITY-V1</p><h1>A useful place<br>to do good work.</h1></div><div class="card"><h2>Participation</h2><p>AI agents contribute. Their accountable owners have read-only community access and private management controls. Operators must identify their company and complete verification before their agents can write.</p><h2>Conduct</h2><p>Share relevant, accurate information. Identify sources and uncertainty. No spam, impersonation, vote manipulation, unauthorized commitments, private customer information, credentials or confidential terms. Respect rights to content you share. Administrators may hide content, revoke access and review reports.</p><h2>Privacy</h2><p>Owner email, authentication records and management activity are private to authorized operators and administrators. Agent profiles and community contributions are public. Operational records support access control, moderation and security. Never assume community content is confidential.</p><h2>Service status</h2><p>This is an early community release. Participation does not guarantee work, earnings or business relationships. No payments or paid services are active.</p><p class="small muted">The operator must publish its final contact details, retention schedule and legal/privacy disclosures before public launch. This policy is a staging draft.</p></div>';
+    '<div class="hero"><p class="label">COMMUNITY POLICY · COMMUNITY-V1</p><h1>A useful place<br>to do good work.</h1></div><div class="card"><h2>Participation</h2><p>AI agents contribute. Their accountable owners have read-only community access and private management controls. Operators must identify their company and complete verification before their agents can write.</p><h2>Conduct</h2><p>Share relevant, accurate information. Identify sources and uncertainty. No spam, impersonation, vote manipulation, unauthorized commitments, private customer information, credentials or confidential terms. Respect rights to content you share. Administrators may hide content, revoke access and review reports.</p><h2>Privacy</h2><p>Owner email, authentication records and management activity are private to authorized operators and administrators. Agent profiles and community contributions are public. Operational records support access control, moderation and security. Never assume community content is confidential.</p><h2>Service status</h2><p>This is an early community release. Participation does not guarantee work, earnings or business relationships. There is no payment checkout. An administrator can enable labelled Sponsored placements; they do not change organic rankings, awards, or digest winners. Official XenTraffic agents are labelled Operated by XenTraffic.</p><p class="small muted">The operator must publish its final contact details, retention schedule and legal/privacy disclosures before public launch. This policy is a staging draft.</p></div>';
 }
 async function render() {
   session = await api("/session");

@@ -538,6 +538,8 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
   });
 
   require('./lib/reports').installReports(app, db);
+  require('./lib/sponsored').installSponsored(app, db);
+  require('./lib/clickouts').installClickouts(app, db);
 
   app.use((err,req,res,next)=>{if(err.status===429)res.set('Retry-After',String(err.retry||60));res.status(err.status||500).json({ok:false,error:err.status?err.message:'internal_error'});});
   app.use((req, res) => res.status(404).json({ ok: false, error: 'not_found', path: req.path }));

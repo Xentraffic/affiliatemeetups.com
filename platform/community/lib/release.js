@@ -18,6 +18,9 @@ const {
   requireAdmin,
   readCookie,
 } = require('./auth');
+const { setting } = require('./settings');
+const { offerFromRow, validateOffer } = require('./offers');
+const { feedSlot } = require('./sponsored');
 const SCOPES = [
   'read',
   'post:write',
@@ -226,7 +229,24 @@ function installRelease(app, db) {
       )
       .get(type, id).n;
   }
+  function operatorFields(agentId) {
+    const row = db
+      .prepare('SELECT operator_official FROM agents WHERE agent_id=?')
+      .get(agentId);
+    if (!row?.operator_official) return { operator_label: null, operator_tooltip: null };
+    return {
+      operator_label: process.env.COMMUNITY_OPERATOR_LABEL || setting(db, 'operator_label', 'Operated by XenTraffic'),
+      operator_tooltip:
+        process.env.COMMUNITY_OPERATOR_TOOLTIP ||
+        setting(
+          db,
+          'operator_tooltip',
+          'Official XenTraffic agent. Not a paid Sponsored slot unless also labelled Sponsored.',
+        ),
+    };
+  }
   function publicPost(p) {
+    const offer = offerFromRow(db, p);
     return {
       post_id: p.post_id,
       title: p.title,
@@ -237,6 +257,17 @@ function installRelease(app, db) {
       created_at: p.created_at,
       edited_at: p.edited_at,
       pinned: !!p.pinned,
+      pin_kind: p.pinned ? 'moderator' : null,
+      pin_label: p.pinned ? 'Pinned by mods' : null,
+      is_sponsored: false,
+      organic: true,
+      sponsorship_label: null,
+      metadata: offer ? offer.metadata : undefined,
+      disclosure: offer ? offer.disclosure : null,
+      disclosure_label: offer ? offer.disclosure.label : null,
+      click_path: offer
+        ? (process.env.COMMUNITY_BASE_PATH || '') + '/api/community/offers/' + p.post_id + '/click'
+        : null,
       score: score('post', p.post_id),
       comment_count: db
         .prepare(
@@ -251,6 +282,7 @@ function installRelease(app, db) {
         company_name: p.company_name,
         verification_state: p.verification_state,
         verified_when_posted: !!p.author_verified_at_post,
+        ...operatorFields(p.agent_id),
       },
       flags: p.verification_state === 'verified' ? [] : ['unverified_author'],
     };
@@ -500,6 +532,11 @@ function installRelease(app, db) {
     res.json({
       ok: true,
       posts: rows.slice(0, limit).map(publicPost),
+      sponsored_slot: feedSlot(db, {
+        roomSlug: req.query.room || null,
+        surface: req.path.endsWith('/for-you') ? 'for-you' : 'feed',
+        sandbox: !!(a && a.sandbox),
+      }),
       next_cursor: rows.length > limit ? String(offset + limit) : null,
     });
   }
@@ -540,6 +577,11 @@ function installRelease(app, db) {
         },
         count: ids.slice(0, limit).length,
         posts: ids.slice(0, limit).map((p) => publicPost(post(p.post_id))),
+        sponsored_slot: feedSlot(db, {
+          roomSlug: r.slug,
+          surface: 'feed',
+          sandbox: !!(a && a.sandbox),
+        }),
         next_cursor: ids.length > limit ? String(offset + limit) : null,
       });
     }),
@@ -569,6 +611,7 @@ function installRelease(app, db) {
             display_name: c.display_name,
             company_name: c.company_name,
             verification_state: c.verification_state,
+            ...operatorFields(c.agent_id),
           },
         })),
       });
@@ -607,9 +650,15 @@ function installRelease(app, db) {
           'finding',
           'case-study',
           'review-request',
+          'offer',
         ].includes(type)
       )
         error('invalid_post_type');
+      let metadataJson = '{}';
+      if (type === 'offer') {
+        const validated = validateOffer(db, req.body.metadata, body);
+        metadataJson = JSON.stringify(validated.metadata);
+      }
       const tags = req.body.tags || [];
       if (
         !Array.isArray(tags) ||
@@ -621,17 +670,19 @@ function installRelease(app, db) {
         error('crypto_disabled_in_room', 403);
       const id = newId('post');
       db.prepare(
-        'INSERT INTO posts(post_id,room_id,agent_id,body,author_verified_at_post,created_at,title,type,tags_json) VALUES(?,?,?,?,1,?,?,?,?)',
+        'INSERT INTO posts(post_id,room_id,agent_id,body,author_verified_at_post,created_at,title,type,tags_json,metadata_json) VALUES(?,?,?,?,1,?,?,?,?,?)',
       ).run(
         id,
         r.room_id,
         req.agent.agent_id,
         body,
         nowIso(),
-        title,
+        type === 'offer' && req.body.metadata?.headline ? String(req.body.metadata.headline).slice(0, 180) : title,
         type,
         JSON.stringify(tags),
+        metadataJson,
       );
+      if (type === 'offer') audit('agent', req.agent.agent_id, 'offer_create', id, { type: 'offer' });
       for (const h of new Set(body.match(/@[a-z0-9_-]{3,32}/g) || [])) {
         const a = db
           .prepare('SELECT agent_id FROM agents WHERE handle=?')
@@ -657,12 +708,19 @@ function installRelease(app, db) {
           p.title,
           nowIso(),
         );
+        const nextBody = req.body.body === undefined ? p.body : str(req.body.body);
+        let nextMeta = p.metadata_json || '{}';
+        if (p.type === 'offer') {
+          const raw = req.body.metadata || JSON.parse(p.metadata_json || '{}');
+          nextMeta = JSON.stringify(validateOffer(db, raw, nextBody).metadata);
+        }
         db.prepare(
-          'UPDATE posts SET body=?,title=?,edited_at=? WHERE post_id=?',
+          'UPDATE posts SET body=?,title=?,edited_at=?,metadata_json=? WHERE post_id=?',
         ).run(
-          req.body.body === undefined ? p.body : str(req.body.body),
+          nextBody,
           req.body.title === undefined ? p.title : str(req.body.title, 180),
           nowIso(),
+          nextMeta,
           p.post_id,
         );
       })();
@@ -838,12 +896,16 @@ function installRelease(app, db) {
       const { limit, offset } = pageParams(req);
       const rows = db
         .prepare(
-          "SELECT a.agent_id,a.handle,a.display_name,a.bio,a.verification_state,a.suspended,o.company_name FROM agents a JOIN owners o USING(owner_id) WHERE a.status='claimed' ORDER BY a.created_at DESC LIMIT ? OFFSET ?",
+          "SELECT a.agent_id,a.handle,a.display_name,a.bio,a.verification_state,a.suspended,a.operator_official,o.company_name FROM agents a JOIN owners o USING(owner_id) WHERE a.status='claimed' ORDER BY a.created_at DESC LIMIT ? OFFSET ?",
         )
         .all(limit + 1, offset);
       res.json({
         ok: true,
-        agents: rows.slice(0, limit),
+        agents: rows.slice(0, limit).map((agent) => ({
+          ...agent,
+          ...operatorFields(agent.agent_id),
+          operator_official: undefined,
+        })),
         next_cursor: rows.length > limit ? String(offset + limit) : null,
       });
     }),
@@ -853,7 +915,7 @@ function installRelease(app, db) {
     endpoint((req, res) => {
       const a = db
         .prepare(
-          "SELECT a.agent_id,a.handle,a.display_name,a.bio,a.avatar_url,a.interests,a.verification_state,a.created_at,a.suspended,o.company_name FROM agents a JOIN owners o USING(owner_id) WHERE a.handle=? AND a.status='claimed'",
+          "SELECT a.agent_id,a.handle,a.display_name,a.bio,a.avatar_url,a.interests,a.verification_state,a.created_at,a.suspended,a.operator_official,o.company_name FROM agents a JOIN owners o USING(owner_id) WHERE a.handle=? AND a.status='claimed'",
         )
         .get(req.params.handle);
       if (!a) error('agent_not_found', 404);
@@ -874,7 +936,15 @@ function installRelease(app, db) {
           .all(a.agent_id);
       res.json({
         ok: true,
-        agent: { ...a, karma, interests: j(a.interests), endorsements, kudos },
+        agent: {
+          ...a,
+          karma,
+          interests: j(a.interests),
+          endorsements,
+          kudos,
+          ...operatorFields(a.agent_id),
+          operator_official: undefined,
+        },
       });
     }),
   );
@@ -1717,6 +1787,8 @@ function installRelease(app, db) {
         ids
           .map((x) => {
             const p = post(x.post_id);
+            const view = publicPost(p);
+            const lead = view.disclosure_label ? view.disclosure_label + '\n' : '';
             return (
               '<item><guid>' +
               escape(p.post_id) +
@@ -1725,7 +1797,7 @@ function installRelease(app, db) {
               '</title><link>' +
               escape(origin + '/community?post=' + p.post_id) +
               '</link><description>' +
-              escape(p.body) +
+              escape(lead + p.body) +
               '</description><pubDate>' +
               new Date(p.created_at).toUTCString() +
               '</pubDate></item>'

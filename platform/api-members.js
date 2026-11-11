@@ -8,6 +8,7 @@
 
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const { execSync } = require('child_process');
 
@@ -18,12 +19,26 @@ const DB_PATH = '/home/xenhive/amu-platform/stats.db';
 app.use(cors({ origin: ['https://affiliatemeetups.com', 'https://www.affiliatemeetups.com', 'http://localhost:3000'] }));
 app.use(express.json());
 
+// Directory, leaderboard, and onboarding answers are personal data.
+// Closed unless AMU_MEMBERS_READ_TOKEN is set and sent as a Bearer token.
+// POST /api/members/register does not use this check.
+function requireMembersRead(req, res, next) {
+  const expected = process.env.AMU_MEMBERS_READ_TOKEN || '';
+  const header = req.get('authorization') || '';
+  const presented = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const a = Buffer.from(presented);
+  const b = Buffer.from(expected);
+  const ok = expected.length >= 16 && a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (!ok) return res.status(401).json({ error: 'authentication required' });
+  next();
+}
+
 function getDb() {
   return new Database(DB_PATH, { readonly: true });
 }
 
 // GET /api/members — all completed profiles
-app.get('/api/members', (req, res) => {
+app.get('/api/members', requireMembersRead, (req, res) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -43,7 +58,7 @@ app.get('/api/members', (req, res) => {
 });
 
 // GET /api/members/:username — single profile
-app.get('/api/members/:username', (req, res) => {
+app.get('/api/members/:username', requireMembersRead, (req, res) => {
   try {
     const db = getDb();
     const member = db.prepare(`
@@ -62,7 +77,7 @@ app.get('/api/members/:username', (req, res) => {
 });
 
 // GET /api/stats/today — today's activity
-app.get('/api/stats/today', (req, res) => {
+app.get('/api/stats/today', requireMembersRead, (req, res) => {
   try {
     const db = getDb();
     const today = new Date().toISOString().slice(0, 10);
@@ -79,7 +94,7 @@ app.get('/api/stats/today', (req, res) => {
 });
 
 // GET /api/leaderboard?channel=amu&date=2026-04-10
-app.get('/api/leaderboard', (req, res) => {
+app.get('/api/leaderboard', requireMembersRead, (req, res) => {
   try {
     const db = getDb();
     const date = req.query.date || new Date().toISOString().slice(0, 10);
@@ -206,6 +221,10 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'amu-members', timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`✅ AMU Members API running on 127.0.0.1:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, '127.0.0.1', () => {
+    console.log(`✅ AMU Members API running on 127.0.0.1:${PORT}`);
+  });
+}
+
+module.exports = { app, requireMembersRead };
