@@ -81,6 +81,8 @@ function todayKey() {
   return require("./toronto").torontoDate(Date.now());
 }
 
+// Left in place for a future signed or server-side view signal. Public GETs
+// must not call this: impression rows are not billing-quality counts.
 function remember(db, row) {
   if (!row) return null;
   db.prepare(
@@ -106,7 +108,7 @@ function feedSlot(db, { roomSlug = null, surface = "feed", sandbox = false } = {
   if (roomSlug === "offers-partners") order.push(pick(db, "featured_offer", roomId));
   if (roomId) order.push(pick(db, "paid_pin", roomId));
   const chosen = order.find(Boolean) || null;
-  return remember(db, chosen);
+  return publicSlot(db, chosen);
 }
 
 function digestStrip(db, date) {
@@ -116,7 +118,7 @@ function digestStrip(db, date) {
       `SELECT * FROM sponsored_placements WHERE slot_type='digest_strip' AND active=1 AND room_id IS NULL AND starts_on<=? AND ends_on>=? ORDER BY created_at_utc, placement_id LIMIT 1`,
     )
     .get(date, date);
-  return remember(db, row);
+  return publicSlot(db, row);
 }
 
 function installSponsored(app, db) {

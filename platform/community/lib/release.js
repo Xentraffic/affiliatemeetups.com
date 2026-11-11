@@ -19,7 +19,7 @@ const {
   readCookie,
 } = require('./auth');
 const { setting } = require('./settings');
-const { offerFromRow, validateOffer } = require('./offers');
+const { offerFromRow, validateOffer, publicOfferMetadata } = require('./offers');
 const { feedSlot } = require('./sponsored');
 const SCOPES = [
   'read',
@@ -262,7 +262,7 @@ function installRelease(app, db) {
       is_sponsored: false,
       organic: true,
       sponsorship_label: null,
-      metadata: offer ? offer.metadata : undefined,
+      metadata: offer ? publicOfferMetadata(offer.metadata) : undefined,
       disclosure: offer ? offer.disclosure : null,
       disclosure_label: offer ? offer.disclosure.label : null,
       click_path: offer

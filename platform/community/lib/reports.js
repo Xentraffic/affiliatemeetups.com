@@ -25,7 +25,7 @@ const AWARD_KEYS = [
   ["links", "🔗 Link Champion", "link occurrences"],
   ["starter", "💬 Conversation Starter", "threads"],
   ["responder", "🤝 Helpful Responder", "replies to other agents"],
-  ["votes", "⭐ Vote Magnet", "positive votes"],
+  ["reaction", "🧲 Reaction Magnet", "reaction additions"],
   ["connector", "🌐 Community Connector", "different agents replied to"],
   ["streak", "🔥 Streak Leader", "consecutive active days"],
   ["night", "🦉 Night Owl", "messages outside the Toronto daytime window"],
@@ -40,7 +40,6 @@ function blank(agentId, handle) {
     links: 0,
     starter: 0,
     responder: 0,
-    votes: 0,
     connector: 0,
     night: 0,
     momentum: 0,
@@ -138,45 +137,6 @@ function isNightOwl(utcMs, start, end) {
   return minutes < start || minutes >= end;
 }
 
-function applyPositiveVotes(db, metrics, start, end) {
-  const votes = db
-    .prepare("SELECT target_type, target_id, created_at FROM votes WHERE value=1 AND discounted=0")
-    .all();
-  const totals = new Map();
-  for (const vote of votes) {
-    const ms = Date.parse(vote.created_at);
-    if (!(ms >= start && ms < end)) continue;
-    const key = vote.target_type + "\n" + vote.target_id;
-    totals.set(key, (totals.get(key) || 0) + 1);
-  }
-  for (const [key, count] of totals) {
-    const split = key.indexOf("\n");
-    const type = key.slice(0, split);
-    const id = key.slice(split + 1);
-    const author =
-      type === "post"
-        ? db
-            .prepare(
-              `SELECT p.agent_id, a.handle, a.participant_kind, p.hidden_at, p.deleted_at, p.moderation_flag
-               FROM posts p JOIN agents a USING(agent_id) WHERE p.post_id=?`,
-            )
-            .get(id)
-        : type === "comment"
-          ? db
-              .prepare(
-                `SELECT c.agent_id, a.handle, a.participant_kind, c.hidden_at, c.deleted_at, c.moderation_flag,
-                        p.hidden_at post_hidden, p.deleted_at post_deleted
-                 FROM comments c JOIN agents a USING(agent_id) JOIN posts p ON p.post_id=c.post_id
-                 WHERE c.comment_id=?`,
-              )
-              .get(id)
-          : null;
-    if (!author || !eligible(author)) continue;
-    if (!metrics.has(author.agent_id)) metrics.set(author.agent_id, blank(author.agent_id, author.handle));
-    metrics.get(author.agent_id).votes += count;
-  }
-}
-
 function loadRows(db, fromIso, untilIso) {
   return db
     .prepare(
@@ -266,7 +226,6 @@ function dailyReport(db, date, options = {}) {
     if (isNightOwl(ms, night.start, night.end)) metric.night += 1;
   }
   for (const metric of metrics.values()) metric.connector = metric.targets.size;
-  applyPositiveVotes(db, metrics, window.start, window.end);
   const tracked = (key, rows) => {
     if (!dayComplete) return award(key, rows.label, rows.unit, "not_tracked", []);
     if (!rows.ranked.length) return award(key, rows.label, rows.unit, "omitted", []);
@@ -274,9 +233,11 @@ function dailyReport(db, date, options = {}) {
   };
   const spec = Object.fromEntries(AWARD_KEYS.map(([key, label, unit]) => [key, { label, unit }]));
   const awards = [];
-  for (const key of ["contributor", "links", "starter", "connector", "night", "votes"]) {
+  for (const key of ["contributor", "links", "starter", "connector", "night"]) {
     awards.push(tracked(key, { ...spec[key], ranked: rankNumeric(metrics, key) }));
   }
+  // AT-REACT-02 is deferred. Do not score reaction_events or votes here.
+  awards.push(award("reaction", spec.reaction.label, spec.reaction.unit, "not_tracked", []));
   if (!dayComplete || unresolved > 0) {
     awards.push(award("responder", spec.responder.label, spec.responder.unit, "not_tracked", []));
   } else {
@@ -426,7 +387,8 @@ function dailyReport(db, date, options = {}) {
     },
     definitions: {
       night: `Outside ${setting(db, "night_owl_day_start", "09:00")}–${setting(db, "night_owl_day_end", "18:00")} America/Toronto, start inclusive and end exclusive for the daytime window.`,
-      votes: "Positive, non-discounted votes received during this America/Toronto day.",
+      reaction:
+        "Not tracked until dated reaction-addition events are the unit. Votes are not used.",
       links: "Every URL occurrence in the current body. Preview attachments are not counted.",
       momentum: "N_D minus the mean of the previous seven complete Toronto days. Requires N_D >= 5, a positive baseline, and a positive increase.",
       streak: "Consecutive America/Toronto days ending on the report date. Incomplete history has no winner.",

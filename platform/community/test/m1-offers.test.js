@@ -112,6 +112,51 @@ describe("B42 offer posts", { concurrency: 1 }, () => {
     assert.notEqual(parsed.post.disclosure_label, "Sponsored");
   });
 
+  test("AT-B42-04 paid offer placement is Sponsored and keeps advertiser or network disclosure", async () => {
+    const created = await create({ ...OFFER, headline: "Paid placement target" });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const offer = created.body.post;
+    assert.equal(
+      (await call(ctx.base, "POST", A + "/admin/sponsored/flags", {
+        auth: ADMIN_AUTH,
+        body: { slot_featured_offer_enabled: true },
+      })).status,
+      200,
+    );
+    const placed = await call(ctx.base, "POST", A + "/admin/sponsored/placements", {
+      auth: ADMIN_AUTH,
+      body: {
+        slot_type: "featured_offer",
+        room_slug: "offers-partners",
+        headline: "Featured offer discussion",
+        destination_url: "https://sponsor.example/featured-offer",
+        starts_on: "2026-01-01",
+        ends_on: "2026-12-31",
+        target_post_id: offer.post_id,
+      },
+    });
+    assert.equal(placed.status, 201, JSON.stringify(placed.body));
+    const detail = (await call(ctx.base, "GET", A + "/posts/" + offer.post_id)).body.post;
+    assert.equal(detail.disclosure.kind, "network");
+    assert.equal(detail.sponsorship_label, null);
+    assert.equal(detail.is_sponsored, false);
+    assert.equal(/operated by/i.test(detail.disclosure_label || ""), false);
+    const open = await call(ctx.base, "GET", A + "/feed");
+    const organic = (open.body.posts || []).find((p) => p.post_id === offer.post_id);
+    assert.ok(organic);
+    assert.equal(organic.sponsorship_label, null);
+    assert.equal(organic.is_sponsored, false);
+    assert.equal(organic.disclosure.kind, "network");
+    assert.equal(/operated by/i.test(organic.disclosure_label || ""), false);
+    const feed = await call(ctx.base, "GET", A + "/feed?room=offers-partners");
+    const slot = feed.body.sponsored_slot;
+    assert.equal(slot.sponsorship_label, "Sponsored");
+    assert.equal(slot.is_sponsored, true);
+    assert.equal(slot.disclosure && slot.disclosure.kind, "network");
+    assert.equal(/operated by/i.test(JSON.stringify(slot)), false);
+    assert.equal((feed.body.posts || []).some((p) => p.post_id === offer.post_id && p.sponsorship_label === "Sponsored"), false);
+  });
+
   test("AT-B42-05 a confidential-terms report can be hidden from later awards", async () => {
     const filed = await call(ctx.base, "POST", A + "/reports", {
       auth: agent.agentAuth,
@@ -254,5 +299,59 @@ describe("B42 offer posts", { concurrency: 1 }, () => {
     assert.equal(location.searchParams.has("aff_click_id"), false);
     assert.equal(location.searchParams.has("transaction_id"), false);
     assert.equal(click.location.includes("offer-owner@example.invalid"), false);
+  });
+
+  test("public offer payloads omit tracking config and keep member-facing fields", async () => {
+    const created = await create({
+      ...OFFER,
+      headline: "Tracked discussion, public read",
+      destination_url: "https://example.invalid/landing",
+      provider: "everflow",
+      tracking_base: "https://track.example/click?oid=9",
+      vid2_funnel: "ech",
+      param_map: { sub5: "sub5", vid2: "pass_vid2" },
+      param_overwrite: ["sub5"],
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.post.post_id;
+    const stored = JSON.parse(ctx.db.prepare("SELECT metadata_json FROM posts WHERE post_id=?").get(id).metadata_json);
+    for (const key of ["provider", "tracking_base", "param_map", "param_overwrite", "vid2_funnel"])
+      assert.ok(stored[key], key);
+    const detail = await call(ctx.base, "GET", A + "/posts/" + id);
+    const feed = await call(ctx.base, "GET", A + "/feed");
+    const mcp = await call(ctx.base, "POST", "/mcp", {
+      auth: agent.agentAuth,
+      body: {
+        jsonrpc: "2.0",
+        id: 42,
+        method: "tools/call",
+        params: { name: "get_context", arguments: { post_id: id } },
+      },
+    });
+    assert.equal(mcp.status, 200, JSON.stringify(mcp.body));
+    const mcpText = mcp.body.result.content[0].text;
+    const mcpPost = JSON.parse(mcpText).post;
+    const surfaces = [
+      created.body.post,
+      detail.body.post,
+      feed.body.posts.find((p) => p.post_id === id),
+      mcpPost,
+    ];
+    const banned = ["provider", "tracking_base", "param_map", "param_overwrite", "vid2_funnel"];
+    for (const post of surfaces) {
+      assert.equal(post.metadata.headline, "Tracked discussion, public read");
+      assert.equal(post.metadata.vertical, "tracking-data");
+      assert.equal(post.metadata.destination_url, "https://example.invalid/landing");
+      assert.equal(post.metadata.network_name, "Example Network");
+      for (const key of banned) assert.equal(Object.hasOwn(post.metadata, key), false, key);
+      assert.equal(JSON.stringify(post).includes("track.example"), false);
+      assert.ok(post.click_path);
+    }
+    assert.equal(JSON.stringify(detail.body).includes("track.example"), false);
+    assert.equal(JSON.stringify(feed.body).includes("track.example"), false);
+    assert.equal(mcpText.includes("track.example"), false);
+    const click = await call(ctx.base, "GET", created.body.post.click_path);
+    assert.equal(click.status, 302);
+    assert.equal(new URL(click.location).hostname, "track.example");
   });
 });

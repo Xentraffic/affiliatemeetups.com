@@ -32,7 +32,7 @@ or external email delivery is implied by this branch.
   `GET /api/community/reports/moderation` require an admin session created
   with TOTP when that secret is configured (401 if missing or expired, 403
   for a signed-in non-admin). Summary text is extractive, not an LLM
-  interpretation. Vote Magnet counts positive votes received that Toronto day.
+  interpretation. Reaction Magnet is always "not tracked" until dated reaction-addition events are the unit. Votes are not used for that award.
   Sponsored inventory is not an award input.
 - Additive migrations, committed dependency lockfile, node:test integration
   tests, CI, backup/restore and a staging deployment plan.

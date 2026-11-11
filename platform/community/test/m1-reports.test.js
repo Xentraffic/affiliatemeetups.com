@@ -384,7 +384,7 @@ describe("M1 report scenarios", { concurrency: 1 }, () => {
     assert.match(award.note, /≥3 \(lower bound\)/);
   });
 
-  test("AT-REACT-01 Vote Magnet winner is the most positive non-discounted votes in the Toronto day", async () => {
+  test("AT-REACT-01 Reaction Magnet is not tracked and is not derived from votes", async () => {
     cover("2026-04-01", 2);
     post("vote-target", "agt-b", "2026-04-01T15:00:00.000Z");
     post("vote-other", "agt-a", "2026-04-01T15:10:00.000Z");
@@ -393,17 +393,29 @@ describe("M1 report scenarios", { concurrency: 1 }, () => {
     db.prepare("INSERT INTO votes VALUES('agt-e','post','vote-target',-1,0,'2026-04-01T16:05:00.000Z')").run();
     db.prepare("INSERT INTO votes VALUES('agt-f','post','vote-target',1,1,'2026-04-01T16:06:00.000Z')").run();
     db.prepare("INSERT INTO votes VALUES('agt-d','post','vote-other',1,0,'2026-04-01T16:07:00.000Z')").run();
+    function assertReaction(body) {
+      const award = body.awards.find((a) => a.key === "reaction");
+      assert.ok(award);
+      assert.equal(award.status, "not_tracked");
+      assert.equal(award.text, "not tracked");
+      assert.notEqual(award.text, "0");
+      assert.equal(award.winner, null);
+      assert.deepEqual(award.tied_handles, []);
+      assert.deepEqual(award.co_winners, []);
+      assert.equal(body.highlights.some((item) => item.key === "reaction"), true);
+      assert.match(body.report_md, /Reaction Magnet/);
+      assert.match(award.label, /Reaction Magnet/);
+      const copy =
+        award.label + " " + award.unit + " " + award.text + " " + body.definitions.reaction + " " + body.report_md;
+      assert.equal(/Vote Magnet/i.test(copy), false);
+      assert.equal(body.awards.some((item) => item.key === "votes" && item.winner), false);
+      assert.equal(body.awards.find((item) => item.key === "votes"), undefined);
+    }
+    assertReaction((await report("2026-04-01")).body);
     db.prepare(
       "INSERT INTO reaction_events(event_id,actor_agent_id,target_type,target_id,target_author_id,created_at,source_event_id,removed) VALUES(?,?,?,?,?,?,?,?)",
     ).run("ignored-event", "agt-a", "post", "vote-target", "agt-b", "2026-04-01T16:10:00.000Z", "evt", 0);
-    const r = await report("2026-04-01");
-    const award = r.body.awards.find((a) => a.key === "votes");
-    assert.equal(award.status, "awarded");
-    assert.equal(award.winner.handle, "Beta");
-    assert.equal(award.winner.value, 2);
-    const copy = award.label + " " + award.unit + " " + award.text + " " + r.body.definitions.votes + " " + r.body.report_md;
-    assert.match(copy, /votes/);
-    assert.equal(/reaction|emoji/i.test(copy), false);
+    assertReaction((await report("2026-04-01")).body);
   });
 
   test("AT-TIE-01 lists every co-winner in case-insensitive handle order", async () => {
@@ -438,13 +450,39 @@ describe("M1 report scenarios", { concurrency: 1 }, () => {
 
   test("AT-EXCL-01 relays, announcements, and spam are out; agents stay in", async () => {
     cover("2026-09-04", 1);
-    post("ex-agent", "agt-e", "2026-09-04T15:00:00.000Z", "human and agent eligible");
+    post("ex-ai", "agt-a", "2026-09-04T15:00:00.000Z", "agent eligible");
+    post("ex-agent", "agt-e", "2026-09-04T15:00:30.000Z", "human and agent eligible");
     post("ex-relay", "agt-c", "2026-09-04T15:01:00.000Z", "relay");
     post("ex-bot", "agt-d", "2026-09-04T15:02:00.000Z", "announce");
     post("ex-spam", "agt-f", "2026-09-04T15:03:00.000Z", "spam", { flag: "spam" });
     const r = await report("2026-09-04");
-    assert.equal(r.body.messages, 1);
-    assert.equal(r.body.awards.find((a) => a.key === "contributor").winner.handle, "human-one");
+    assert.equal(r.body.messages, 2);
+    const contrib = r.body.awards.find((a) => a.key === "contributor");
+    assert.deepEqual(contrib.co_winners, ["alpha", "human-one"]);
+    const banned = ["relay-bot", "announcement_bot", "spam-agent"];
+    assert.equal(banned.some((h) => contrib.co_winners.includes(h)), false);
+    for (const item of r.body.awards) {
+      const names = [...(item.co_winners || [])];
+      if (item.winner) names.push(item.winner.handle);
+      assert.equal(banned.some((h) => names.includes(h)), false, item.key);
+    }
+    const flag = db.prepare("SELECT value FROM settings WHERE name='slot_digest_enabled'").get().value;
+    db.prepare("UPDATE settings SET value='1' WHERE name='slot_digest_enabled'").run();
+    try {
+      db.prepare(
+        `INSERT INTO sponsored_placements(placement_id,slot_type,headline,body,destination_url,starts_on,ends_on,created_at_utc,updated_at_utc)
+         VALUES('spk-excl','digest_strip','Paid','','https://sponsor.example/excl','2026-09-01','2026-09-30','2026-09-01T00:00:00.000Z','2026-09-01T00:00:00.000Z')`,
+      ).run();
+      const paid = await report("2026-09-04");
+      assert.equal(paid.body.messages, 2);
+      assert.deepEqual(paid.body.awards.find((a) => a.key === "contributor").co_winners, ["alpha", "human-one"]);
+      assert.equal(JSON.stringify(paid.body.awards).includes("spk-excl"), false);
+      assert.equal(JSON.stringify(paid.body.notable_links).includes("spk-excl"), false);
+    } finally {
+      // Same database as AT-SHAPE-01, which expects its own September strip to win.
+      db.prepare("DELETE FROM sponsored_placements WHERE placement_id='spk-excl'").run();
+      db.prepare("UPDATE settings SET value=? WHERE name='slot_digest_enabled'").run(flag);
+    }
   });
 
   test("AT-EXCL-02 deleted items are out and edits stay on the original instant", async () => {
@@ -520,5 +558,53 @@ describe("M1 report scenarios", { concurrency: 1 }, () => {
     assert.equal(JSON.stringify(asAdmin.body).includes("$"), false);
     const staticHeader = await call(ctx.base, "GET", A + "/reports/financial", { auth: ADMIN_AUTH });
     assert.equal(staticHeader.status, 401);
+  });
+
+  test("unauthenticated daily digest GET does not write sponsored impressions", async () => {
+    cover("2026-09-20", 1);
+    const flag = db.prepare("SELECT value FROM settings WHERE name='slot_digest_enabled'").get().value;
+    db.prepare("UPDATE settings SET value='1' WHERE name='slot_digest_enabled'").run();
+    const overlapping = db
+      .prepare(
+        `SELECT placement_id FROM sponsored_placements
+         WHERE slot_type='digest_strip' AND active=1 AND starts_on<=? AND ends_on>=?`,
+      )
+      .all("2026-09-20", "2026-09-20")
+      .map((row) => row.placement_id);
+    if (overlapping.length) {
+      db.prepare(
+        `UPDATE sponsored_placements SET active=0 WHERE placement_id IN (${overlapping.map(() => "?").join(",")})`,
+      ).run(...overlapping);
+    }
+    try {
+      db.prepare(
+        `INSERT INTO sponsored_placements(placement_id,slot_type,headline,body,destination_url,starts_on,ends_on,created_at_utc,updated_at_utc)
+         VALUES('spk-readonly','digest_strip','Sponsor headline','','https://sponsor.example/readonly','2026-09-01','2026-09-30','2026-09-01T00:00:00.000Z','2026-09-01T00:00:00.000Z')`,
+      ).run();
+      const before = db.prepare("SELECT impression_count FROM sponsored_placements WHERE placement_id='spk-readonly'").get();
+      const eventsBefore = db
+        .prepare("SELECT COUNT(*) n FROM sponsored_events WHERE placement_id='spk-readonly' AND kind='impression'")
+        .get().n;
+      const first = await report("2026-09-20");
+      const second = await report("2026-09-20");
+      assert.equal(first.status, 200);
+      assert.equal(first.body.sponsored_strip.placement_id, "spk-readonly");
+      assert.equal(second.body.sponsored_strip.placement_id, "spk-readonly");
+      const after = db.prepare("SELECT impression_count FROM sponsored_placements WHERE placement_id='spk-readonly'").get();
+      const eventsAfter = db
+        .prepare("SELECT COUNT(*) n FROM sponsored_events WHERE placement_id='spk-readonly' AND kind='impression'")
+        .get().n;
+      assert.equal(after.impression_count, before.impression_count);
+      assert.equal(eventsAfter, eventsBefore);
+    } finally {
+      db.prepare("DELETE FROM sponsored_placements WHERE placement_id='spk-readonly'").run();
+      db.prepare("DELETE FROM sponsored_events WHERE placement_id='spk-readonly'").run();
+      if (overlapping.length) {
+        db.prepare(
+          `UPDATE sponsored_placements SET active=1 WHERE placement_id IN (${overlapping.map(() => "?").join(",")})`,
+        ).run(...overlapping);
+      }
+      db.prepare("UPDATE settings SET value=? WHERE name='slot_digest_enabled'").run(flag);
+    }
   });
 });

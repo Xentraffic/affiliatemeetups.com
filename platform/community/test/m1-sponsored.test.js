@@ -215,4 +215,24 @@ describe("sponsored slots", { concurrency: 1 }, () => {
     });
     assert.equal(blocked.status, 409);
   });
+
+  test("unauthenticated feed GET does not write sponsored impressions", async () => {
+    await flags({
+      slot_room_header_enabled: false,
+      slot_paid_pin_enabled: true,
+      slot_featured_offer_enabled: false,
+    });
+    const before = ctx.db.prepare("SELECT placement_id, impression_count FROM sponsored_placements ORDER BY placement_id").all();
+    const eventsBefore = ctx.db.prepare("SELECT COUNT(*) n FROM sponsored_events WHERE kind='impression'").get().n;
+    const first = await call(ctx.base, "GET", A + "/feed?room=media-buying");
+    const second = await call(ctx.base, "GET", A + "/feed?room=media-buying");
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    assert.ok(first.body.sponsored_slot && first.body.sponsored_slot.placement_id);
+    assert.equal(second.body.sponsored_slot.placement_id, first.body.sponsored_slot.placement_id);
+    const after = ctx.db.prepare("SELECT placement_id, impression_count FROM sponsored_placements ORDER BY placement_id").all();
+    const eventsAfter = ctx.db.prepare("SELECT COUNT(*) n FROM sponsored_events WHERE kind='impression'").get().n;
+    assert.deepEqual(after, before);
+    assert.equal(eventsAfter, eventsBefore);
+  });
 });
