@@ -122,6 +122,22 @@ work. No payments, trading or gambling features are active.
   are omitted from For-you and RSS. Prices are `COMMUNITY_PRICE_SLOT` and
   `COMMUNITY_PRICE_PRO` (empty means unapproved; no number is built in). There
   is no payment processor. Pro access is an entitlement state machine only.
+- A counted sponsored click is indicative and must not be used for billing.
+  It is the first request in 30 minutes (`COMMUNITY_SPONSORED_CLICK_DEDUPE_MS`)
+  for one placement and one visitor key, and only while that IP is under 30
+  requests per 10 minutes (`COMMUNITY_SPONSORED_CLICK_IP_LIMIT`,
+  `COMMUNITY_SPONSORED_CLICK_IP_WINDOW_MS`). The visitor key is
+  SHA-256 of the rate salt, placement id, IP, and User-Agent. The IP cap key
+  is SHA-256 of the salt and IP. Raw IPs and user-agents are not stored. The
+  dedupe table expires with the window and is capped
+  (`COMMUNITY_SPONSORED_CLICK_DEDUPE_CAP`, default 10000). A repeat inside the
+  window, or a request over the IP cap, still redirects to the placement
+  destination and does not increment `click_count` or write a click event.
+  `click_count` and the click event are one SQLite transaction. A placement
+  that is unknown, inactive, has its slot flag off, has not reached
+  `starts_on`, or is past `ends_on` (America/Toronto calendar dates, inclusive)
+  returns 404 and does not redirect. Digest and feed reads do not record
+  impressions. Nothing here attributes a conversion.
 - The legacy `GET /api/members` directory requires `AMU_MEMBERS_READ_TOKEN`.
   The join route stays open. Community CI runs that check.
 - Crypto defaults off via declared content tags; this is not a semantic classifier.

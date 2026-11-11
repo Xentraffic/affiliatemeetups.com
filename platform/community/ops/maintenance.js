@@ -7,6 +7,10 @@ const db = openDb();
 const now = Date.now();
 db.prepare('DELETE FROM request_cache WHERE expires_at<?').run(now);
 db.prepare('DELETE FROM rate_buckets WHERE expires_at<?').run(now);
+const dedupe = db
+  .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sponsored_click_dedupe'")
+  .get();
+if (dedupe) db.prepare('DELETE FROM sponsored_click_dedupe WHERE expires_at<?').run(now);
 db.prepare('DELETE FROM admin_sessions WHERE expires_at<?').run(nowIso());
 db.prepare('DELETE FROM admin_totp_used WHERE counter<?').run(
   Math.floor(now / 30000) - 2,

@@ -4,6 +4,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { startApp, call, provisionClaimedAgent, ADMIN_AUTH } = require("./helpers");
+const { recordSponsoredClick } = require("../lib/sponsored");
+const { torontoDate, addCalendarDays } = require("../lib/toronto");
 
 const A = "/api/community";
 
@@ -376,5 +378,131 @@ describe("sponsored slots", { concurrency: 1 }, () => {
       delete process.env.COMMUNITY_BASE_PATH;
       await staged.close();
     }
+  });
+
+  function clickTotals(id) {
+    return {
+      clicks: ctx.db.prepare("SELECT click_count FROM sponsored_placements WHERE placement_id=?").get(id).click_count,
+      events: ctx.db.prepare("SELECT COUNT(*) n FROM sponsored_events WHERE placement_id=? AND kind='click'").get(id).n,
+    };
+  }
+
+  test("first sponsored click is counted and a repeat in the window is not", async () => {
+    await flags({ slot_digest_enabled: true });
+    const created = await place({
+      slot_type: "digest_strip",
+      headline: "Dedupe sponsor",
+      destination_url: "https://sponsor.example/deduped",
+      starts_on: "2026-01-01",
+      ends_on: "2026-12-31",
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.placement.placement_id;
+    const headers = { "user-agent": "dedupe-visitor" };
+    const first = await call(ctx.base, "GET", A + "/sponsored/" + id + "/click", { headers });
+    const second = await call(ctx.base, "GET", A + "/sponsored/" + id + "/click", { headers });
+    assert.equal(first.status, 302);
+    assert.equal(first.location, "https://sponsor.example/deduped");
+    assert.equal(second.status, 302);
+    assert.equal(second.location, "https://sponsor.example/deduped");
+    assert.deepEqual(clickTotals(id), { clicks: 1, events: 1 });
+    const stored = ctx.db.prepare("SELECT dedupe_key FROM sponsored_click_dedupe").all().map((row) => row.dedupe_key).join("\n");
+    assert.equal(stored.includes("127.0.0.1"), false);
+    assert.equal(stored.includes("dedupe-visitor"), false);
+  });
+
+  test("per-IP sponsored click limit redirects without counting", async () => {
+    await flags({ slot_digest_enabled: true });
+    const created = await place({
+      slot_type: "digest_strip",
+      headline: "Rate limit sponsor",
+      destination_url: "https://sponsor.example/rate-limited",
+      starts_on: "2026-01-01",
+      ends_on: "2026-12-31",
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.placement.placement_id;
+    ctx.db.prepare("DELETE FROM rate_buckets WHERE bucket LIKE 'sponsored-click-ip:%'").run();
+    process.env.COMMUNITY_SPONSORED_CLICK_IP_LIMIT = "2";
+    try {
+      for (const agent of ["rate-a", "rate-b"]) {
+        const res = await call(ctx.base, "GET", A + "/sponsored/" + id + "/click", { headers: { "user-agent": agent } });
+        assert.equal(res.status, 302, agent);
+        assert.equal(res.location, "https://sponsor.example/rate-limited");
+      }
+      assert.deepEqual(clickTotals(id), { clicks: 2, events: 2 });
+      const blocked = await call(ctx.base, "GET", A + "/sponsored/" + id + "/click", { headers: { "user-agent": "rate-c" } });
+      assert.equal(blocked.status, 302);
+      assert.equal(blocked.location, "https://sponsor.example/rate-limited");
+      assert.deepEqual(clickTotals(id), { clicks: 2, events: 2 });
+    } finally {
+      delete process.env.COMMUNITY_SPONSORED_CLICK_IP_LIMIT;
+    }
+  });
+
+  test("expired, future, and disabled placements do not count or redirect", async () => {
+    await flags({ slot_digest_enabled: true });
+    const today = torontoDate(Date.now());
+    const cases = [
+      ["expired", addCalendarDays(today, -10), addCalendarDays(today, -1)],
+      ["future", addCalendarDays(today, 1), addCalendarDays(today, 10)],
+      ["disabled", "2026-01-01", "2026-12-31"],
+    ];
+    for (const [name, starts, ends] of cases) {
+      const created = await place({
+        slot_type: "digest_strip",
+        headline: name + " sponsor",
+        destination_url: "https://sponsor.example/" + name,
+        starts_on: starts,
+        ends_on: ends,
+      });
+      assert.equal(created.status, 201, name + " " + JSON.stringify(created.body));
+      const id = created.body.placement.placement_id;
+      if (name === "disabled") ctx.db.prepare("UPDATE sponsored_placements SET active=0 WHERE placement_id=?").run(id);
+      const before = clickTotals(id);
+      const res = await call(ctx.base, "GET", A + "/sponsored/" + id + "/click", { headers: { "user-agent": name + "-visitor" } });
+      assert.equal(res.status, 404, name);
+      assert.equal(res.location, null, name);
+      assert.deepEqual(clickTotals(id), before, name);
+    }
+  });
+
+  test("sponsored click count and event roll back together", async () => {
+    await flags({ slot_digest_enabled: true });
+    const created = await place({
+      slot_type: "digest_strip",
+      headline: "Atomic sponsor",
+      destination_url: "https://sponsor.example/atomic",
+      starts_on: "2026-01-01",
+      ends_on: "2026-12-31",
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.placement.placement_id;
+    const today = torontoDate(Date.now());
+    assert.throws(
+      () =>
+        recordSponsoredClick(ctx.db, {
+          placementId: id,
+          dedupeKey: "rollback-key",
+          expiresAt: Date.now() + 60000,
+          today,
+          beforeEvent() {
+            throw new Error("injected");
+          },
+        }),
+      /injected/,
+    );
+    assert.deepEqual(clickTotals(id), { clicks: 0, events: 0 });
+    assert.equal(ctx.db.prepare("SELECT COUNT(*) n FROM sponsored_click_dedupe WHERE dedupe_key='rollback-key'").get().n, 0);
+    assert.equal(
+      recordSponsoredClick(ctx.db, {
+        placementId: id,
+        dedupeKey: "rollback-key",
+        expiresAt: Date.now() + 60000,
+        today,
+      }),
+      "counted",
+    );
+    assert.deepEqual(clickTotals(id), { clicks: 1, events: 1 });
   });
 });
