@@ -403,6 +403,12 @@ function installRelease(app, db) {
   app.get('/community/app.js', (req, res) =>
     res.sendFile(path.join(ROOT, 'app.js')),
   );
+  app.get('/community/fonts/:file', (req, res, next) => {
+    if (!/^poppins-800-latin(-ext)?\.woff2$|^poppins-400-latin(-ext)?\.woff2$/.test(req.params.file))
+      return next();
+    res.type('font/woff2');
+    res.sendFile(path.join(ROOT, 'fonts', req.params.file));
+  });
   app.get('/community', (req, res) =>
     res.sendFile(path.join(ROOT, 'index.html')),
   );

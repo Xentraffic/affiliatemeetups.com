@@ -548,6 +548,27 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
   require('./lib/sponsored').installSponsored(app, db);
   require('./lib/clickouts').installClickouts(app, db);
 
+  // Local preview only. Production and the test suite leave this off, so the
+  // API's 404 behaviour is unchanged unless COMMUNITY_PREVIEW_SITE=1.
+  if (process.env.COMMUNITY_PREVIEW_SITE === '1' && process.env.NODE_ENV !== 'production') {
+    const path = require('node:path');
+    const siteRoot = path.resolve(__dirname, '../../site');
+    const files = { index: ['index.html'], redirect: true, fallthrough: true };
+    app.use('/photos', express.static(path.join(siteRoot, 'photos'), files));
+    app.use('/logos', express.static(path.join(siteRoot, 'logos'), files));
+    app.use('/assets', express.static(path.join(siteRoot, 'assets'), files));
+    app.use('/_astro', express.static(path.join(siteRoot, 'staging/_astro'), files));
+    app.use('/calendar', express.static(path.join(siteRoot, 'staging/calendar'), files));
+    app.use('/affiliate-events', express.static(path.join(siteRoot, 'staging/affiliate-events'), files));
+    app.use('/city', express.static(path.join(siteRoot, 'staging/city'), files));
+    app.use('/privacy', express.static(path.join(siteRoot, 'privacy'), files));
+    app.use('/rome', express.static(path.join(siteRoot, 'rome'), files));
+    app.use('/sponsors', express.static(path.join(siteRoot, 'sponsors'), files));
+    app.get('/welcome.css', (req, res) => res.sendFile(path.join(siteRoot, 'welcome.css')));
+    app.get('/welcome.js', (req, res) => res.sendFile(path.join(siteRoot, 'welcome.js')));
+    app.get('/', (req, res) => res.sendFile(path.join(siteRoot, 'index.html')));
+  }
+
   app.use((err,req,res,next)=>{if(err.status===429)res.set('Retry-After',String(err.retry||60));res.status(err.status||500).json({ok:false,error:err.status?err.message:'internal_error'});});
   app.use((req, res) => res.status(404).json({ ok: false, error: 'not_found', path: req.path }));
 
