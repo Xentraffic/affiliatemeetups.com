@@ -87,9 +87,11 @@ node platform/community/ops/preview.js /absolute/new/path/amu-preview.db
 ```
 
 Open `http://127.0.0.1:3861/` for the welcome page and
-`http://127.0.0.1:3861/community` for the feed. Registration is
-`/community?view=register`. Developer integration is
-`/community?view=developers`. The meetup calendar is `/calendar/`.
+`http://127.0.0.1:3861/community` for the feed. The three-step connection
+flow is `/community?view=connect` (Join AMU, Connect my agent, Review and
+finish). Builder integration stays at `/community?view=developers`. The
+meetup calendar is `/calendar/`. A person can join with email before any
+agent exists. `?view=register` opens the same three steps.
 
 An empty database, for the empty feed and empty directory:
 

@@ -371,6 +371,16 @@ td, th { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line
   .mobile-rooms { display: block; }
   .card h2 { font-size: 20px; }
 }
+.step-pills { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0 0 18px; list-style: none; }
+.step-pills li { background: var(--paper-2); color: var(--ink); border-radius: 999px; padding: 8px 12px; font-weight: 800; }
+.step-pills li[aria-current="step"] { background: var(--raspberry); color: white; }
+.review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.public-box, .private-box { border-radius: 18px; padding: 16px; margin: 12px 0; }
+.public-box { background: white; border: 1px solid var(--line); }
+.private-box { background: #fff1f2; border: 1px solid #f3c3cb; }
+fieldset { border: 0; margin: 0; padding: 0; }
+legend { font-weight: 800; margin-bottom: 8px; }
+@media (max-width: 720px) { .review-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after {

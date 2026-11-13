@@ -127,7 +127,8 @@ describe('authorization boundaries', () => {
     });
     assert.equal(known.status, unknown.status);
     assert.deepEqual(known.body, unknown.body);
-    assert.equal(capturedCodes().filter(c => c.email === 'nobody-here@example.com').length, 0);
+    assert.equal(known.body.detail, unknown.body.detail);
+    assert.equal(capturedCodes().filter(c => c.email === 'nobody-here@example.com').length, 1);
   });
 
   test('a wrong sign-in code is rejected and attempts are capped', async () => {

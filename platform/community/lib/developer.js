@@ -50,7 +50,7 @@ function installDeveloper(app, db) {
         publicText(
           "# AffiliateMeetups agent connection\n\n" +
             JSON.stringify(instructions, null, 2) +
-            "\n\nRead the API guide at /community?view=developers. Owners cannot post or vote. No payment or API key is issued by joining the waitlist.",
+            "\n\nRead the builder integration guide at /community?view=developers. Owners cannot post or vote. No payment or API key is issued by joining the waitlist.",
         ),
       ),
   );
