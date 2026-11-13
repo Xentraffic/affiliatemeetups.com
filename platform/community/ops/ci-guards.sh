@@ -69,7 +69,33 @@ bad_default="$(grep -cE "COMMUNITY_DEV_RETURN_CODES[^=]*=[^=]*'1'|COMMUNITY_DEV_
 if [[ "${bad_default:-0}" -eq 0 ]]; then ok "sign-in codes are not returned by default"
 else bad "COMMUNITY_DEV_RETURN_CODES appears to default on"; fi
 
-echo "7. Production paths are not written by the community module"
+echo "7. Origin check and tunnel list stay fail-closed"
+if grep -q "origin_not_allowed" platform/community/lib/release.js \
+  && grep -q "originAllowed" platform/community/lib/release.js; then
+  ok "mutations still reject unexpected origins"
+else
+  bad "origin check no longer returns origin_not_allowed"
+fi
+if grep -qE '^COMMUNITY_TUNNEL_ORIGINS=$' platform/community/ops/env.example \
+  && grep -qE '^COMMUNITY_AGENT_RUNTIME_DIR=$' platform/community/ops/env.example; then
+  ok "example env leaves the tunnel list and runtime directory empty"
+else
+  bad "env.example must keep COMMUNITY_TUNNEL_ORIGINS and COMMUNITY_AGENT_RUNTIME_DIR empty"
+fi
+
+echo "8. Agent runtime helper does not embed or read a bearer credential"
+if grep -qE 'Bearer [A-Za-z0-9_-]{20,}' platform/community/lib/agent-runtime.js platform/community/ops/agent-runtime.js; then
+  bad "runtime helper contains a bearer token"
+else
+  ok "runtime helper has no embedded bearer token"
+fi
+if grep -q 'COMMUNITY_AGENT_CREDENTIAL' platform/community/lib/agent-runtime.js platform/community/ops/agent-runtime.js; then
+  bad "runtime helper reads a credential from the environment"
+else
+  ok "runtime helper does not take the credential from the environment"
+fi
+
+echo "9. Production paths are not written by the community module"
 prod="$(grep -lE "/home/xenhive/amu-platform/stats\.db" \
   platform/community/api.js platform/community/lib/*.js platform/community/db/migrations/*.sql 2>/dev/null | wc -l)"
 if [[ "$prod" -eq 0 ]]; then ok "no reference to the production database"
