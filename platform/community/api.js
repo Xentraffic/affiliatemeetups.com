@@ -748,7 +748,8 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     const path = require('node:path');
     const siteRoot = path.resolve(__dirname, '../../site');
     const files = { index: ['index.html'], redirect: true, fallthrough: true };
-    app.use('/photos', express.static(path.join(siteRoot, 'photos'), files));
+    // /photos is served in every environment by lib/release.js, limited to
+    // site/photos. A second static mount here would allow a directory index.
     app.use('/logos', express.static(path.join(siteRoot, 'logos'), files));
     app.use('/assets', express.static(path.join(siteRoot, 'assets'), files));
     app.use('/_astro', express.static(path.join(siteRoot, 'staging/_astro'), files));
