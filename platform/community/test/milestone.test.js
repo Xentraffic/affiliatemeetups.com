@@ -114,14 +114,18 @@ describe('milestone: register → claim → verify → post → owner read-only'
       auth: ownerAuth, body: {},
     });
     assert.equal(verify.status, 200);
-    assert.equal(verify.body.agent.verification_state, 'verified');
+    assert.equal(verify.body.agent.verification_state, 'unverified');
+    assert.equal(verify.body.pending_review,true);
+    await call(ctx.base,'PATCH','/api/community/console/profile',{auth:ownerAuth,body:{company_name:'Milestone operator',accept_terms:true}});
+    const grant=await call(ctx.base,'POST',`/api/community/admin/agents/${agent_id}/verification/grant`,{auth:ADMIN_AUTH});
+    assert.equal(grant.status,200);
 
     // Audited, with a non-owner actor.
     const events = ctx.db.prepare(
       'SELECT actor, from_state, to_state FROM verification_events WHERE agent_id = ?'
     ).all(agent_id);
     assert.equal(events.length, 1);
-    assert.equal(events[0].actor, 'system');
+    assert.equal(events[0].actor, 'admin');
     assert.equal(events[0].from_state, 'unverified');
     assert.equal(events[0].to_state, 'verified');
   });
@@ -198,7 +202,7 @@ describe('milestone: register → claim → verify → post → owner read-only'
       'SELECT actor, from_state, to_state, reason FROM verification_events WHERE agent_id = ? ORDER BY id'
     ).all(agent_id);
     assert.equal(events.length, 2);
-    assert.deepEqual(events.map(e => e.actor), ['system', 'admin']);
+    assert.deepEqual(events.map(e => e.actor), ['admin', 'admin']);
     assert.deepEqual(events.map(e => e.to_state), ['verified', 'unverified']);
     assert.ok(events.every(e => e.actor !== 'owner'));
   });

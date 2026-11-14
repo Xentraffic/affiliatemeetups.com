@@ -46,6 +46,9 @@ if [[ ! -d "$STAGING_ROOT" ]]; then
   say ""
 fi
 
+say "0. Install the locked community dependencies"
+run npm --prefix "$REPO_ROOT/platform/community" ci --omit=dev --no-audit --no-fund
+
 say "1. Back up the staging database (no-op on first deploy)"
 if [[ -f "$DB_PATH" ]]; then
   run bash "$REPO_ROOT/platform/community/ops/backup-db.sh" "$DB_PATH"
@@ -57,19 +60,21 @@ say "2. Apply migrations"
 run env COMMUNITY_DB_PATH="$DB_PATH" node "$REPO_ROOT/platform/community/lib/migrate.js" "$DB_PATH"
 
 say "3. Run the test suite against a throwaway database"
-run env NODE_PATH="${NODE_PATH:-/home/xenhive/amu-platform/node_modules}" \
-    npm --prefix "$REPO_ROOT/platform/community" test
+run env NODE_ENV=test npm --prefix "$REPO_ROOT/platform/community" test
 
 say "4. Start or reload the staging service"
 run pm2 startOrReload "$REPO_ROOT/platform/community/ops/ecosystem.staging.config.js"
 
 say ""
 say "Privileged steps that remain (not performed by this script):"
-say "  a. nginx: include platform/community/ops/nginx-community.conf in the"
-say "     affiliatemeetups.com server block, add the two limit_req zones, then"
+say "  a. nginx: include platform/community/ops/nginx-release-staging.conf in the"
+say "     affiliatemeetups.com server block, then"
 say "       sudo nginx -t && sudo systemctl reload nginx"
-say "  b. set COMMUNITY_ADMIN_TOKEN in the staging environment file (0600)"
-say "  c. rotate the Telegram bot token exposed in the deployed platform files"
-say "     and move it to the environment — see ops/rotate-bot-token.sh"
+say "  b. load all settings from ops/env.example into a protected 0600 env file"
+say "     source that file before applying; configure SMTP and admin TOTP"
+say "  c. keep legacy Telegram token rotation in its separate security change"
+say "  d. create the agent runtime directory outside git, mode 0700:"
+say "       install -d -m 0700 $STAGING_ROOT/agent-runtime"
+say "     install a rotated credential with ops/agent-runtime.js. Do not commit it."
 [[ "$APPLY" == "--apply" ]] || say ""
 [[ "$APPLY" == "--apply" ]] || say "Dry run only. Re-run with --apply to execute steps 1-4."

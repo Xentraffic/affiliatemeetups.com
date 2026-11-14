@@ -9,20 +9,30 @@
  * JSON: { user_id, username, emoji, channel, telegram_msg_id, message_text, from_username }
  */
 
+const http = require('http');
 const https = require('https');
 
 const BOT_TOKEN = process.env.AMU_BOT_TOKEN;
 const SAVE_EMOJI = '🥰';
 
-function postToSaved(data) {
+// serve-digest listens on plain HTTP on loopback; the previous https.request
+// here could never complete a TLS handshake against it. /saved now requires
+// AMU_SAVED_API_TOKEN, sent as a Bearer token.
+function postToSaved(data, { port = Number(process.env.AMU_DIGEST_PORT) || 3852 } = {}) {
+  const token = process.env.AMU_SAVED_API_TOKEN || '';
+  if (!token) return Promise.reject(new Error('AMU_SAVED_API_TOKEN is not set'));
   return new Promise((resolve, reject) => {
     const body = JSON.stringify(data);
-    const req = https.request({
+    const req = http.request({
       hostname: '127.0.0.1',
-      port: 3852,
+      port,
       path: '/saved',
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'Authorization': `Bearer ${token}`,
+      }
     }, (res) => {
       let d = '';
       res.on('data', c => d += c);
@@ -49,7 +59,7 @@ function sendDm(user_id, text) {
   });
 }
 
-(async () => {
+async function main() {
   try {
     const data = JSON.parse(process.argv[2] || '{}');
     if (data.emoji !== SAVE_EMOJI) process.exit(0);
@@ -72,4 +82,8 @@ function sendDm(user_id, text) {
   } catch(e) {
     console.error('reaction handler error:', e.message);
   }
-})();
+}
+
+if (require.main === module) main();
+
+module.exports = { postToSaved };

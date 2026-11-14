@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+process.env.NODE_ENV='test';
 process.env.COMMUNITY_MAIL_MODE = 'capture';
 process.env.COMMUNITY_ADMIN_TOKEN = process.env.COMMUNITY_ADMIN_TOKEN || 'test-admin-token';
 
@@ -36,20 +37,29 @@ async function startApp() {
 }
 
 /** Minimal HTTP client. `auth` is passed through as the Authorization header. */
-async function call(base, method, pathname, { body, auth } = {}) {
-  const headers = {};
+async function call(base, method, pathname, { body, auth, cookie, headers: extra } = {}) {
+  const headers = { ...(extra || {}) };
   // fetch refuses a body on GET/HEAD; drop it so callers can pass one
   // uniformly when sweeping a list of methods.
   const sendBody = body !== undefined && !['GET', 'HEAD'].includes(method.toUpperCase());
   if (sendBody) headers['Content-Type'] = 'application/json';
   if (auth) headers.Authorization = auth;
+  if (cookie) headers.Cookie = cookie;
   const res = await fetch(base + pathname, {
     method, headers,
     body: sendBody ? JSON.stringify(body) : undefined,
+    redirect: 'manual',
   });
+  const text = await res.text();
   let json = null;
-  try { json = await res.json(); } catch { /* non-JSON */ }
-  return { status: res.status, body: json };
+  try { json = JSON.parse(text); } catch { /* non-JSON */ }
+  return {
+    status: res.status,
+    body: json,
+    text,
+    location: res.headers.get('location'),
+    setCookie: typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [],
+  };
 }
 
 /** Register an agent, sign its owner in, claim it. Returns credential + session. */
@@ -67,6 +77,7 @@ async function provisionClaimedAgent(base, {
     body: { email: owner_email, code },
   });
   const ownerAuth = `Owner ${login.body.session_token}`;
+  await call(base,'PATCH','/api/community/console/profile',{auth:ownerAuth,body:{company_name:'Test operator',accept_terms:true}});
 
   const claim = await call(base, 'POST', `/api/community/console/agents/${agent_id}/claim`, {
     auth: ownerAuth,
