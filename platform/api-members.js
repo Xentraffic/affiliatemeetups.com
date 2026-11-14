@@ -11,13 +11,18 @@ const cors = require('cors');
 const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const { execSync } = require('child_process');
+const { rateLimit, originList } = require('./http-guards');
 
 const app = express();
 const PORT = 3851;
 const DB_PATH = '/home/xenhive/amu-platform/stats.db';
 
-app.use(cors({ origin: ['https://affiliatemeetups.com', 'https://www.affiliatemeetups.com', 'http://localhost:3000'] }));
-app.use(express.json());
+const SITE_ORIGINS = ['https://affiliatemeetups.com', 'https://www.affiliatemeetups.com', 'http://localhost:3000'];
+// Behind nginx on loopback: take the client address from X-Forwarded-For
+// (set by proxy_params) so per-IP limits are per visitor, not per proxy.
+app.set('trust proxy', 'loopback');
+app.use(cors({ origin: SITE_ORIGINS }));
+app.use(express.json({ limit: '16kb' }));
 
 // Directory, leaderboard, and onboarding answers are personal data.
 // Closed unless AMU_MEMBERS_READ_TOKEN is set and sent as a Bearer token.
@@ -181,8 +186,34 @@ function cyberimpactAddMember(email, groupId, firstname, lastname) {
   });
 }
 
-app.post('/api/members/register', async (req, res) => {
-  const { firstname, lastname, email, company, jobtitle, phone } = req.body || {};
+// The join form is a public browser form, so it cannot carry a secret.
+// It stays open, with brakes: browser Origin must be ours when sent, a
+// per-IP and a global rate limit, a honeypot, and length/type checks.
+const REGISTER_FIELD_MAX = { firstname: 80, lastname: 80, email: 254, company: 120, jobtitle: 120, phone: 40 };
+const registerPerIp = rateLimit({ windowMs: 60 * 60 * 1000, max: Number(process.env.AMU_REGISTER_PER_IP_HOURLY) || 5 });
+const registerGlobal = rateLimit({ windowMs: 60 * 60 * 1000, max: Number(process.env.AMU_REGISTER_GLOBAL_HOURLY) || 100, key: () => 'all' });
+
+function registerOrigin(req, res, next) {
+  const origin = req.get('origin');
+  if (origin && !originList('AMU_REGISTER_ORIGINS', SITE_ORIGINS).includes(origin)) {
+    return res.status(403).json({ ok: false, error: 'origin not allowed' });
+  }
+  next();
+}
+
+app.post('/api/members/register', registerOrigin, registerPerIp, registerGlobal, async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  // Honeypot: the form renders this field hidden. Bots fill it; people do not.
+  // Answer like a success so the bot learns nothing, and do nothing.
+  if (body.website_fax) return res.json({ ok: true, status: 200, duplicate: false });
+  for (const [field, max] of Object.entries(REGISTER_FIELD_MAX)) {
+    if (body[field] != null && (typeof body[field] !== 'string' || body[field].length > max)) {
+      return res.status(400).json({ ok: false, error: `Invalid ${field}` });
+    }
+  }
+  const firstname = (body.firstname || '').trim();
+  const lastname = (body.lastname || '').trim();
+  const email = (body.email || '').trim().toLowerCase();
   if (!email || !EMAIL_RE.test(email)) {
     return res.status(400).json({ ok: false, error: 'Valid email is required' });
   }
