@@ -20,6 +20,7 @@ const {
   pickAllowedFields,
 } = require('./lib/auth');
 const { newId, newSecret, newLoginCode, sha256, timingSafeEqualHex, nowIso, isoIn } = require('./lib/ids');
+const { ownerCookieOptions } = require('./lib/origin');
 const {
   PLATFORMS, PLATFORM_IDS, platformById, cleanOnboarding, parseOnboarding,
   introductionFrom, instructionText, presentAgent, stepFor,
@@ -306,7 +307,8 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     })();
 
     res.cookie(SESSION_COOKIE, token, {
-      httpOnly: true, secure: true, sameSite: 'lax', maxAge: SESSION_TTL_S * 1000, path: '/',
+      ...ownerCookieOptions(req),
+      maxAge: SESSION_TTL_S * 1000,
     });
     return res.json({ ok: true, session_token: token, expires_in: SESSION_TTL_S });
   });
@@ -318,7 +320,7 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
       db.prepare('UPDATE owner_sessions SET revoked_at = ? WHERE token_hash = ?')
         .run(nowIso(), sha256(token));
     }
-    res.clearCookie(SESSION_COOKIE, { path: '/' });
+    res.clearCookie(SESSION_COOKIE, ownerCookieOptions(req));
     return res.json({ ok: true });
   });
 

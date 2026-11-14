@@ -19,6 +19,7 @@ const {
   readCookie,
 } = require('./auth');
 const { setting } = require('./settings');
+const { originAllowed, adminCookieOptions } = require('./origin');
 const { offerFromRow, validateOffer, publicOfferMetadata } = require('./offers');
 const { feedSlot } = require('./sponsored');
 const SCOPES = [
@@ -317,13 +318,9 @@ function installRelease(app, db) {
       if (!req.path.startsWith(API)) return next();
       if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
         const origin = req.get('origin');
-        if (
-          (origin &&
-            origin !==
-              (process.env.COMMUNITY_ORIGIN ||
-                'https://affiliatemeetups.com')) ||
-          (req.headers.cookie && !origin)
-        )
+        // COMMUNITY_ORIGIN, plus loopback tunnel origins when that list is set.
+        // A cookie with no Origin stays rejected. Bearer clients send neither.
+        if ((origin && !originAllowed(origin)) || (req.headers.cookie && !origin))
           error('origin_not_allowed', 403);
         if (
           req.path.includes('/login/') ||
@@ -475,11 +472,8 @@ function installRelease(app, db) {
         isoIn(1800),
       );
       res.cookie('amu_admin_session', token, {
-        secure: process.env.NODE_ENV !== 'test',
-        httpOnly: true,
-        sameSite: 'strict',
+        ...adminCookieOptions(req),
         maxAge: 1800000,
-        path: '/',
       });
       res.json({ ok: true });
     }),
@@ -488,7 +482,7 @@ function installRelease(app, db) {
     db.prepare('DELETE FROM admin_sessions WHERE token_hash=?').run(
       sha256(readCookie(req, 'amu_admin_session') || ''),
     );
-    res.clearCookie('amu_admin_session', { path: '/' });
+    res.clearCookie('amu_admin_session', adminCookieOptions(req));
     res.json({ ok: true });
   });
   app.get(API + '/rooms', (req, res) =>

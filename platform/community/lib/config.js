@@ -1,4 +1,5 @@
 "use strict";
+const { assertTunnelOrigins } = require("./origin");
 // Refuse public-mode startup with development authentication or missing secrets.
 function validateRuntime(env = process.env) {
   if (env.NODE_ENV !== "production") return;
@@ -19,6 +20,7 @@ function validateRuntime(env = process.env) {
   } catch {
     invalid.push("COMMUNITY_ORIGIN must be an HTTPS origin");
   }
+  invalid.push(...assertTunnelOrigins(env));
   if (env.COMMUNITY_MAIL_MODE !== "smtp")
     invalid.push("COMMUNITY_MAIL_MODE must be smtp");
   for (const key of [

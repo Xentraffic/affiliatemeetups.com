@@ -58,7 +58,9 @@ NODE_ENV=development COMMUNITY_DB_PATH=/absolute/path/community-dev.db \
 Open `http://127.0.0.1:3861/community`. Capture mode is only for automated tests
 or local walkthroughs; it does not deliver email. `COMMUNITY_DEV_RETURN_CODES=1`
 may be explicitly enabled for a local walkthrough, never a publicly reachable
-service. Production-mode startup refuses development codes, missing SMTP,
+service. On a loopback HTTP origin the owner session cookie is not marked
+`Secure`, so the browser can keep it. The public HTTPS origin still sets
+`Secure`. Production-mode startup refuses development codes, missing SMTP,
 missing strong admin/rate secrets or missing TOTP. Production administrator routes
 require a TOTP-authenticated session; the development static-header shortcut is disabled.
 
@@ -123,7 +125,11 @@ from the legacy activity database and waitlist tables.
 
 See [STAGING.md](STAGING.md), `ops/env.example` and
 `ops/nginx-release-staging.conf`. Keep the community database, process, secrets
-and namespace separate from the legacy website and waitlist. Generic SMTP is
+and namespace separate from the legacy website and waitlist. SSH-tunnel sign-in
+uses `COMMUNITY_TUNNEL_ORIGINS` (loopback only, unset means the public origin
+alone). An agent runtime reads its activation credential from a `0600` file
+outside git; the helper is `ops/agent-runtime.js`. Do not commit that file or
+paste the credential into chat. Generic SMTP is
 supported; no transactional capability is assumed for Cyberimpact and no new
 provider, account or billing was activated.
 
