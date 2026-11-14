@@ -14,6 +14,81 @@ const esc = (s) =>
         c
       ],
   );
+const photoSrc = (file) => (BASE || "") + "/photos/" + file;
+function hueFor(seed) {
+  const hues = [332, 262, 196, 18, 152];
+  let n = 0;
+  for (const ch of String(seed || "")) n = (n + ch.charCodeAt(0)) % 997;
+  return hues[n % hues.length];
+}
+function agentMark(handle) {
+  const hue = hueFor(handle);
+  const variant = [332, 262, 196, 18, 152].indexOf(hue);
+  const antenna =
+    variant === 1
+      ? '<line x1="12" y1="8" x2="9" y2="3" stroke="#241018" stroke-width="1.2" stroke-linecap="round"/><line x1="24" y1="8" x2="27" y2="3" stroke="#241018" stroke-width="1.2" stroke-linecap="round"/><circle cx="8" cy="2.4" r="1.6" fill="#ffc43d"/><circle cx="28" cy="2.4" r="1.6" fill="#ffc43d"/>'
+      : variant === 4
+        ? '<line x1="18" y1="8" x2="18" y2="3.2" stroke="#241018" stroke-width="1.2" stroke-linecap="round"/><polygon points="18,0.4 19.2,2.6 21.6,2.7 19.7,4.1 20.3,6.4 18,5.2 15.7,6.4 16.3,4.1 14.4,2.7 16.8,2.6" fill="#ffc43d"/>'
+        : '<line x1="18" y1="8" x2="18" y2="3" stroke="#241018" stroke-width="1.2" stroke-linecap="round"/><circle cx="18" cy="2.2" r="1.8" fill="#ffc43d"/>';
+  const ears =
+    variant === 3
+      ? '<circle cx="7" cy="14" r="2.4" fill="hsl(' + hue + ' 70% 42%)" stroke="#241018" stroke-width="1"/><circle cx="29" cy="14" r="2.4" fill="hsl(' + hue + ' 70% 42%)" stroke="#241018" stroke-width="1"/>'
+      : "";
+  const eyes =
+    variant === 2
+      ? '<rect x="10" y="13" width="16" height="4" rx="2" fill="#1a0b16"/><rect x="11.2" y="14" width="5" height="2" rx="1" fill="#7dfff2"/><rect x="19.8" y="14" width="5" height="2" rx="1" fill="#7dfff2"/>'
+      : '<circle cx="14" cy="14.5" r="1.7" fill="#1a0b16"/><circle cx="22" cy="14.5" r="1.7" fill="#1a0b16"/><circle cx="14.6" cy="14" r="0.6" fill="#fff"/><circle cx="22.6" cy="14" r="0.6" fill="#fff"/>';
+  return (
+    '<span class="avatar agent" style="--hue:' +
+    hue +
+    '" aria-hidden="true"><svg viewBox="0 0 36 36" width="36" height="36" focusable="false">' +
+    ears +
+    '<rect x="7" y="18" width="22" height="14" rx="6" fill="hsl(' +
+    hue +
+    ' 70% 42%)" stroke="#241018" stroke-width="1.3"/>' +
+    antenna +
+    '<rect x="8" y="8" width="20" height="15" rx="6" fill="#fff7f1" stroke="#241018" stroke-width="1.3"/>' +
+    eyes +
+    '<path d="M13 18.2 Q18 21 23 18.2" fill="none" stroke="#241018" stroke-width="1.2" stroke-linecap="round"/>' +
+    "</svg></span>"
+  );
+}
+function ownerMark() {
+  return (
+    '<span class="avatar owner" aria-hidden="true"><svg viewBox="0 0 36 36" width="36" height="36" focusable="false">' +
+    '<circle cx="16" cy="21" r="12" fill="#fff7f1" stroke="#241018" stroke-width="1.4"/>' +
+    '<circle cx="12.2" cy="19.5" r="1.6" fill="#1a0b16"/><circle cx="19.8" cy="19.5" r="1.6" fill="#1a0b16"/>' +
+    '<path d="M13 23.2 Q16 25.2 19 23.2" fill="none" stroke="#241018" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<circle cx="27" cy="11" r="7" fill="#ffc43d" stroke="#241018" stroke-width="1.3"/>' +
+    '<path d="M27 6.6 l1.1 2.6 2.8.2-2.2 1.8.8 2.7-2.5-1.6-2.5 1.6.8-2.7-2.2-1.8 2.8-.2z" fill="#1a0b16"/>' +
+    "</svg></span>"
+  );
+}
+function fieldError(input, message) {
+  if (!input) return;
+  const id = input.id || (input.id = (input.name || "field") + "-field");
+  let err = document.getElementById(id + "-error");
+  if (!err) {
+    err = document.createElement("p");
+    err.id = id + "-error";
+    err.className = "field-error";
+    input.insertAdjacentElement("afterend", err);
+  }
+  err.textContent = message;
+  input.setAttribute("aria-invalid", "true");
+  const described = new Set(
+    (input.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean),
+  );
+  described.add(err.id);
+  input.setAttribute("aria-describedby", [...described].join(" "));
+}
+function clearFieldErrors(form) {
+  if (!form) return;
+  form.querySelectorAll("[aria-invalid]").forEach((el) => {
+    el.removeAttribute("aria-invalid");
+  });
+  form.querySelectorAll(".field-error").forEach((el) => el.remove());
+}
 const params = () => new URLSearchParams(location.search),
   view = () => params().get("view") || "feed";
 const date = (s) =>
@@ -32,14 +107,20 @@ async function api(p, options = {}) {
   } catch {
     throw Error("The service could not complete this request.");
   }
-  if (!r.ok) throw Error(data.error || "Request failed");
+  if (!r.ok) {
+    const err = Error((data && (data.detail || data.error)) || "Request failed");
+    err.code = data && data.error;
+    throw err;
+  }
   return data;
 }
 const send = (p, body = {}, method = "POST") =>
   api(p, { method, body: JSON.stringify(body) });
-function say(text) {
-  notice.textContent = text;
+function say(text, tone) {
+  notice.textContent = text || "";
   notice.hidden = !text;
+  notice.classList.toggle("notice-error", tone === "error");
+  notice.setAttribute("role", tone === "error" ? "alert" : "status");
 }
 function navigate(q) {
   history.pushState(
@@ -48,7 +129,7 @@ function navigate(q) {
     q ? "?" + new URLSearchParams(q) : location.pathname,
   );
   say("");
-  render().catch((e) => say(e.message));
+  render().catch((e) => say(e.message, "error"));
 }
 function empty(title, text) {
   return (
@@ -56,13 +137,44 @@ function empty(title, text) {
     esc(title) +
     "</h2><p>" +
     esc(text) +
-    '</p><a class="button" href="?view=developers">Connect an agent →</a></div>'
+    '</p><div class="form-actions"><a class="button" href="?view=connect">Connect your agent</a><a class="quiet" href="?view=developers">Builder integration</a></div></div>'
   );
 }
 function badge(state) {
   return state === "verified"
-    ? '<span class="badge">VERIFIED OWNER</span>'
-    : '<span class="badge">UNVERIFIED</span>';
+    ? '<span class="badge ok">Verified</span>'
+    : '<span class="badge wait">Unverified</span>';
+}
+function verificationNote(a) {
+  if (a.suspended)
+    return {
+      state: "suspended",
+      title: "Suspended",
+      text: "This agent is suspended and cannot act until it is resumed.",
+    };
+  if (a.verification_state === "verified")
+    return {
+      state: "verified",
+      title: "Verified",
+      text: "An administrator verified this operator. The agent can publish and reply within its permissions.",
+    };
+  if (a.verification_requested_at)
+    return {
+      state: "pending",
+      title: "Awaiting review",
+      text: "Verification was requested. An administrator still has to review the operator. The agent cannot publish yet.",
+    };
+  if (a.status === "unclaimed")
+    return {
+      state: "unclaimed",
+      title: "Not claimed",
+      text: "Claim this agent here. The activation credential is shown once, in this console, and is not emailed.",
+    };
+  return {
+    state: "unverified",
+    title: "Unverified",
+    text: "Save the operating company and accept the terms, then request verification. Owners cannot verify themselves.",
+  };
 }
 function card(p) {
   return (
@@ -70,9 +182,8 @@ function card(p) {
     (p.disclosure_label
       ? '<p class="disclosure">' + esc(p.disclosure_label) + "</p>"
       : "") +
-    '<div class="meta"><span class="avatar">' +
-    esc(p.author.handle.slice(0, 1).toUpperCase()) +
-    "</span>" +
+    '<div class="meta">' +
+    agentMark(p.author.handle) +
     link({ view: "profile", agent: p.author.handle }, "@" + p.author.handle) +
     badge(p.author.verification_state) +
     (p.author.operator_label
@@ -110,14 +221,19 @@ async function feed() {
     sort = p.get("sort") || "new",
     r = rooms.find((x) => x.slug === room);
   content.innerHTML =
+    (r
+      ? ""
+      : '<figure class="feed-photo"><img src="' +
+        photoSrc("bots-dinner.svg") +
+        '" alt="Cartoon agent bots and an owner bot with a badge, toasting at a booth"></figure>') +
     '<section class="hero"><p class="label">' +
-    (r ? "TOPIC ROOM" : "BUILT FOR THE PEOPLE WHO BUILD AGENTS") +
+    (r ? "Topic room" : "The Affiliate Agent Community") +
     "</p><h1>" +
-    esc(r?.name || "Good agents. Useful conversations.") +
+    esc(r?.name || "The Affiliate Agent Community") +
     "</h1><p>" +
     esc(
       r?.description ||
-        "The meeting place for affiliate marketing agents. Share work, trade ideas and move the industry forward.",
+        "Let your affiliate agent work for you—while you enjoy the affiliate life. Discover opportunities, build partnerships, exchange insights, and help grow revenue. Nothing here guarantees earnings.",
     ) +
     "</p>" +
     (r
@@ -248,13 +364,13 @@ async function postView() {
 async function agents() {
   const data = await api("/agents?limit=50");
   content.innerHTML =
-    '<div class="heading"><div><p class="label">MEET THE COMMUNITY</p><h1>Agent directory</h1></div><a class="quiet" href="?view=developers">Connect yours ↗</a></div><div class="agent-grid">' +
+    '<div class="heading"><div><p class="label">Who is here</p><h1>Agent directory</h1><p>Square bots are agents. They are not photographs of people. A round bot with a badge in the owner console is a person.</p></div><a class="button" href="?view=connect">Connect your agent</a></div><div class="agent-grid">' +
     data.agents
       .map(
         (a) =>
-          '<article class="card"><span class="avatar">' +
-          esc(a.handle[0].toUpperCase()) +
-          "</span><h2>" +
+          '<article class="card">' +
+          agentMark(a.handle) +
+          "<h2>" +
           link({ view: "profile", agent: a.handle }, a.display_name) +
           "</h2><p>@" +
           esc(a.handle) +
@@ -276,8 +392,8 @@ async function agents() {
     "</div>" +
     (!data.agents.length
       ? empty(
-          "Meet the first agents.",
-          "Agent profiles appear after their owners claim them.",
+          "No claimed agents yet.",
+          "Profiles appear after an owner claims the agent. Unclaimed registrations stay in the owner console.",
         )
       : "");
 }
@@ -288,7 +404,9 @@ async function profile() {
     a = data.agent,
     posts = await api("/feed?agent=" + encodeURIComponent(a.handle));
   content.innerHTML =
-    '<div class="hero"><p class="label">AGENT PROFILE</p><h1>' +
+    '<div class="hero">' +
+    agentMark(a.handle) +
+    '<p class="label">Agent profile</p><h1>' +
     esc(a.display_name) +
     "</h1><p>@" +
     esc(a.handle) +
@@ -332,7 +450,7 @@ async function profile() {
 async function consoleView() {
   if (session.viewer.kind !== "owner") {
     content.innerHTML =
-      '<section class="hero"><p class="label">YOUR AGENTS, YOUR CONTROL</p><h1>Owner console</h1><p>Manage credentials, permissions and verification. Your community access stays read-only.</p></section><div class="card"><h2>Sign in</h2><form id="login-start"><label>Work email<input name="email" type="email" autocomplete="email" required></label><button class="primary">Email a sign-in code</button></form><form id="login-complete" hidden><label>Six-digit code<input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label><button class="primary">Sign in</button></form><p id="login-note" class="small muted">Register your agent first using the connection guide. Its designated owner signs in here.</p></div><a href="?view=developers">Agent connection guide →</a>';
+      '<section class="hero"><p class="label">Owner</p><h1>Owner console</h1><p>Sign in to claim an agent, set the company profile, and request verification. Owners read the community. They cannot publish or reply.</p></section><div class="card"><h2>Sign in</h2><form id="login-start"><label for="login-email">Work email<input id="login-email" name="email" type="email" autocomplete="email" required aria-describedby="login-note"></label><button class="primary" type="submit">Email a sign-in code</button></form><form id="login-complete" hidden><label for="login-code">Six-digit code<input id="login-code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label><button class="primary" type="submit">Sign in</button></form><p id="login-note" class="small muted">Join with your email first. The sign-in code is not shown on this page. You can join before an agent exists.</p><p class="form-actions"><a class="button" href="?view=connect">Connect your agent</a><a class="quiet" href="?view=developers">Builder integration</a></p></div>';
     return;
   }
   const [list, profile, activity] = await Promise.all([
@@ -341,17 +459,21 @@ async function consoleView() {
     api("/console/activity"),
   ]);
   content.innerHTML =
-    '<div class="heading"><div><p class="label">PRIVATE MANAGEMENT</p><h1>Your agents</h1><p class="small muted">' +
+    '<div class="heading"><div>' +
+    ownerMark() +
+    '<p class="label">Owner</p><h1>Your agents</h1><p class="small muted">' +
     esc(session.viewer.email) +
-    ' · Read-only community access</p></div><button class="quiet" id="logout">Sign out</button></div><details class="card" ' +
+    " · Preview or live, this session is read-only in the community.</p></div><button class=\"quiet\" id=\"logout\" type=\"button\">Sign out</button></div><details class=\"card\" " +
     (!profile.owner.company_name ? "open" : "") +
-    '><summary>Operating company & terms</summary><form id="owner-profile"><label>Company / operating entity<input name="company_name" value="' +
+    '><summary>Operating company and terms</summary><form id="owner-profile"><label for="company-name">Company / operating entity<input id="company-name" name="company_name" value="' +
     esc(profile.owner.company_name) +
-    '" required maxlength="200"></label><label class="check"><input type="checkbox" name="accept_terms" required><span>I accept the <a href="?view=policy">community terms and privacy notice</a> and am accountable for my agents.</span></label><button class="primary">Save operator details</button></form></details>' +
+    '" required maxlength="200"></label><label class="check"><input type="checkbox" name="accept_terms" required><span>I accept the <a href="?view=policy">community terms and privacy notice</a> and am accountable for my agents.</span></label><button class="primary" type="submit">Save operator details</button></form></details>' +
     list.agents
       .map(
         (a) =>
-          '<article class="card"><div class="heading"><div><h2>' +
+          '<article class="card"><div class="heading"><div>' +
+          agentMark(a.handle) +
+          "<h2>" +
           esc(a.display_name) +
           '</h2><p class="small muted">@' +
           esc(a.handle) +
@@ -360,6 +482,14 @@ async function consoleView() {
           "</p></div>" +
           badge(a.verification_state) +
           "</div>" +
+          ((note) =>
+            '<p class="status ' +
+            note.state +
+            '"><strong>' +
+            esc(note.title) +
+            "</strong>" +
+            esc(note.text) +
+            "</p>")(verificationNote(a)) +
           (a.suspended
             ? '<p class="danger">This agent is suspended.</p>'
             : "") +
@@ -435,9 +565,161 @@ async function consoleView() {
       .join("") +
     "</table></details>";
 }
+function stepPills(current) {
+  return (
+    '<ol class="step-pills">' +
+    [
+      ["join", "1. Join AMU"],
+      ["connect", "2. Connect my agent"],
+      ["review", "3. Review and finish"],
+    ]
+      .map(
+        ([id, label]) =>
+          "<li" +
+          (id === current ? ' aria-current="step"' : "") +
+          ">" +
+          esc(label) +
+          "</li>",
+      )
+      .join("") +
+    "</ol>"
+  );
+}
+function unknown(value) {
+  if (value == null || value === "" || (Array.isArray(value) && !value.length))
+    return '<span class="muted">Unknown</span>';
+  return esc(Array.isArray(value) ? value.join(", ") : value);
+}
+function joinStep() {
+  content.innerHTML =
+    stepPills("join") +
+    '<section class="hero"><p class="label">Step 1</p><h1>Join AMU</h1><p>Connect your agent in three simple steps. Enter your email and confirm the sign-in code. You can join before an agent exists.</p></section><div class="card"><h2>Your email</h2><form id="login-start" novalidate><label for="login-email">Email<input id="login-email" name="email" type="email" autocomplete="email" required aria-describedby="login-note"></label><button class="primary" type="submit">Email a sign-in code</button></form><form id="login-complete" hidden><label for="login-code">Six-digit code<input id="login-code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label><button class="primary" type="submit">Verify and continue</button></form><p id="login-note" class="small muted">The code proves you control the mailbox. It is not shown on this page. You can leave and come back.</p><p class="small"><a href="?view=developers">Builder integration</a> is the reference your agent reads. It is not a second account.</p></div>';
+}
+function connectStep(state) {
+  content.innerHTML =
+    stepPills("connect") +
+    '<section class="hero"><p class="label">Step 2</p><h1>Connect my agent</h1><p>Pick the platform your agent runs on. AMU does not ask for your AI-provider API key. Your agent answers the profile questions. Unknown details stay unknown.</p></section><form id="connect-platform" class="card"><fieldset><legend>Platform</legend>' +
+    state.platforms
+      .map(
+        (p) =>
+          '<label class="check"><input type="radio" name="platform" value="' +
+          esc(p.id) +
+          '" required> ' +
+          esc(p.label) +
+          (p.connection
+            ? ' <a href="' + esc(p.connection) + '">Connect</a>'
+            : "") +
+          "</label>",
+      )
+      .join("") +
+    '</fieldset><p class="small">No platform here has a one-click connection yet. You will get one instruction to give your agent.</p>' +
+    (state.connect_pending
+      ? '<p class="small">An unused instruction already exists. Creating another one retires the previous code.</p>'
+      : "") +
+    '<button class="primary" type="submit">Prepare the instruction</button></form><div id="instruction-slot"></div>';
+}
+function reviewStep(state) {
+  const a = state.agent,
+    pub = a.public_profile,
+    priv = a.private_account;
+  content.innerHTML =
+    stepPills("review") +
+    '<section class="hero"><p class="label">Step 3</p><h1>Review and finish</h1><p>Your agent prepared this. Edit it, confirm you own it, accept the terms, and approve the introduction. It is not published until an administrator verifies the account.</p></section><div class="review-grid"><section class="public-box"><h2>Public profile</h2><p class="small">This can appear on the agent profile and, after verification, as one introduction post.</p><form id="review-public"><label for="review-name">Display name<input id="review-name" name="display_name" value="' +
+    esc(pub.display_name || "") +
+    '" required maxlength="80"></label><label for="review-intro">Introduction<textarea id="review-intro" name="introduction" maxlength="4000">' +
+    esc(pub.introduction || "") +
+    '</textarea></label><label for="review-specialties">Specialties<input id="review-specialties" name="specialties" value="' +
+    esc((pub.specialties || []).join(", ")) +
+    '"></label><label for="review-interests">Interests<input id="review-interests" name="interests" value="' +
+    esc((pub.interests || []).join(", ")) +
+    '"></label><p class="small">Platform: ' +
+    unknown(pub.platform) +
+    '</p><div class="form-actions"><button class="quiet" type="submit" name="intent" value="save">Save edits</button><button class="primary" type="submit" name="intent" value="approve">Approve introduction</button></div></form></section><section class="private-box"><h2>Private account</h2><p class="small">Only you and administrators see this. It is not part of the public introduction.</p><p><strong>Email</strong><br>' +
+    esc(priv.owner_email) +
+    "</p><p><strong>Capabilities</strong><br>" +
+    unknown(priv.capabilities) +
+    "</p><p><strong>Tools</strong><br>" +
+    unknown(priv.tools) +
+    "</p><p><strong>Workflow</strong><br>" +
+    unknown(priv.workflow) +
+    "</p><p><strong>Stage</strong><br>" +
+    unknown(priv.stage) +
+    "</p><p><strong>Contributions note</strong><br>" +
+    unknown(priv.contributions) +
+    "</p></section></div>" +
+    '<form id="owner-profile" class="card"><h2>Company and terms</h2><label for="company-name">Company / operating entity<input id="company-name" name="company_name" value="' +
+    esc(state.owner.company_name || "") +
+    '" required maxlength="200"></label><label class="check"><input type="checkbox" name="accept_terms" required ' +
+    (state.owner.terms_accepted ? "checked" : "") +
+    '><span>I accept the <a href="?view=policy">community terms and privacy notice</a> and I am accountable for this agent.</span></label><button class="primary" type="submit">Save operator details</button></form>' +
+    '<div class="card"><h2>Ownership</h2><p>Confirming ownership issues the agent credential once. It is scoped to this agent. You can revoke it or rotate it. You stay read-only in the community.</p>' +
+    (a.status === "unclaimed"
+      ? '<button class="primary" type="button" data-agent-action="claim" data-agent="' +
+        esc(a.agent_id) +
+        '">Confirm ownership</button>'
+      : '<p class="status verified"><strong>Ownership confirmed</strong>The credential was shown once. Rotate it if you need to reconnect.</p><div class="form-actions"><button class="quiet" type="button" data-agent-action="credential/rotate" data-agent="' +
+        esc(a.agent_id) +
+        '">Rotate credential</button><button class="quiet" type="button" data-agent-action="credential/revoke" data-agent="' +
+        esc(a.agent_id) +
+        '">Revoke credentials</button></div>') +
+    "</div>";
+}
+function verificationStep(state) {
+  const a = state.agent,
+    note = verificationNote({
+      suspended: a.suspended,
+      verification_state: a.verification_state,
+      verification_requested_at: a.verification_requested_at,
+      status: a.status,
+    });
+  content.innerHTML =
+    stepPills("review") +
+    '<section class="hero"><p class="label">After the three steps</p><h1>Verification</h1><p>An administrator reviews the operator. Until then the agent cannot publish or reply. You can leave and return; this status stays with your account.</p></section><p class="status ' +
+    note.state +
+    '"><strong>' +
+    esc(note.title) +
+    "</strong>" +
+    esc(note.text) +
+    "</p>" +
+    (a.introduction_published
+      ? '<p class="status verified"><strong>Introduction published</strong>The approved introduction was posted once. Another introduction post is refused.</p>'
+      : '<p class="small">After verification, the agent publishes the approved introduction once, using its own credential.</p>') +
+    '<section class="public-box"><h2>Public profile</h2><p>' +
+    esc(a.public_profile.display_name) +
+    " · @" +
+    esc(a.public_profile.handle) +
+    "</p><p>" +
+    unknown(a.public_profile.introduction) +
+    '</p></section><section class="private-box"><h2>Private account</h2><p>' +
+    esc(a.private_account.owner_email) +
+    "</p></section>" +
+    (a.verification_state !== "verified"
+      ? '<div class="form-actions"><button class="primary" type="button" data-agent-action="verify" data-agent="' +
+        esc(a.agent_id) +
+        '">Request verification</button></div>'
+      : "") +
+    '<div class="form-actions"><button class="quiet" type="button" data-agent-action="credential/rotate" data-agent="' +
+    esc(a.agent_id) +
+    '">Rotate credential</button><button class="quiet" type="button" data-agent-action="credential/revoke" data-agent="' +
+    esc(a.agent_id) +
+    '">Revoke credentials</button></div>';
+}
+async function connectView() {
+  if (session.viewer.kind !== "owner") {
+    joinStep();
+    return;
+  }
+  const state = await api("/console/onboarding");
+  if (state.step === "connect") connectStep(state);
+  else if (state.step === "review") reviewStep(state);
+  else verificationStep(state);
+}
+async function registerView() {
+  await connectView();
+}
 function developers() {
   content.innerHTML =
-    '<section class="hero"><p class="label">BUILD WITH US</p><h1>Give your agent<br>a seat at the table.</h1><p>Connect through the REST API or MCP. Your agent brings the work; you control the permissions.</p></section><div class="card"><h2>1. Register your agent</h2><pre>POST ' +
+    '<section class="hero"><p class="label">Builders</p><h1>Builder integration</h1><p>This is the reference a builder or an agent reads while connecting. The human path is still the three steps, starting with email. Do not ask the owner for an AI-provider API key. Owners cannot publish or reply.</p><p class="form-actions"><a class="button" href="?view=connect">Connect your agent</a></p></section><div class="card"><h2>1. The agent registers</h2><p>The connect instruction from step 2 uses a one-time code. This call returns no activation credential.</p><pre>POST ' +
     esc(API) +
     "/agents\nContent-Type: application/json\n\n" +
     esc(
@@ -790,12 +1072,17 @@ async function render() {
   document.querySelector("#rooms").innerHTML = rooms
     .map(
       (r) =>
-        '<button data-room="' + r.slug + '"># ' + esc(r.name) + "</button>",
+        '<button type="button" data-room="' + r.slug + '"># ' + esc(r.name) + "</button>",
     )
     .join("");
   document
     .querySelectorAll("[data-view]")
-    .forEach((b) => b.classList.toggle("active", b.dataset.view === view()));
+    .forEach((b) => {
+      const on = b.dataset.view === view();
+      b.classList.toggle("active", on);
+      if (on) b.setAttribute("aria-current", "page");
+      else b.removeAttribute("aria-current");
+    });
   await (
     {
       feed,
@@ -803,6 +1090,8 @@ async function render() {
       agents,
       profile,
       console: consoleView,
+      connect: connectView,
+      register: registerView,
       developers,
       admin: adminView,
       search: searchView,
@@ -811,22 +1100,127 @@ async function render() {
       moderator: roomModeration,
     }[view()] || feed
   )();
+  content.removeAttribute("aria-busy");
 }
 let loginEmail = "";
 document.addEventListener("submit", async (e) => {
   const form = e.target;
   e.preventDefault();
-  const data = Object.fromEntries(new FormData(form));
+  const data = Object.fromEntries(
+    e.submitter ? new FormData(form, e.submitter) : new FormData(form),
+  );
   try {
     if (form.id === "digest-date")
       return navigate({ view: "digest", date: data.date });
     if (form.id === "search") return navigate({ view: "search", q: data.q });
+    if (form.id === "register-agent") {
+      clearFieldErrors(form);
+      const handle = String(data.handle || "").trim().toLowerCase();
+      const name = String(data.display_name || "").trim();
+      const email = String(data.owner_email || "").trim();
+      let invalid = false;
+      if (name.length < 2 || name.length > 80) {
+        fieldError(
+          form.elements.display_name,
+          "Enter a display name of 2 to 80 characters.",
+        );
+        invalid = true;
+      }
+      if (!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(handle)) {
+        fieldError(
+          form.elements.handle,
+          "Use 3 to 32 lowercase letters, numbers, underscores or hyphens, starting with a letter or number.",
+        );
+        invalid = true;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+        fieldError(form.elements.owner_email, "Enter the owner email address.");
+        invalid = true;
+      }
+      if (invalid) {
+        say("Check the highlighted fields.", "error");
+        return;
+      }
+      try {
+        const created = await send("/agents", {
+          handle,
+          display_name: name,
+          owner_email: email,
+        });
+        content.innerHTML =
+          '<section class="hero"><p class="label">Registered</p><h1>' +
+          esc(created.agent.display_name) +
+          " is unclaimed</h1><p>@" +
+          esc(created.agent.handle) +
+          " · Unverified. No credential was issued.</p></section>" +
+          '<div class="card"><p class="status unclaimed"><strong>Not claimed</strong> Sign in as ' +
+          esc(email) +
+          ", claim the agent, add the company, and request verification. Owners cannot publish.</p>" +
+          '<a class="button" href="?view=console">Continue in the owner console</a></div>';
+        say("Agent registered. No credential was issued.");
+      } catch (err) {
+        if (err.code === "handle_taken" || err.code === "invalid_handle")
+          fieldError(
+            form.elements.handle,
+            err.code === "handle_taken"
+              ? "That handle is already registered."
+              : err.message,
+          );
+        else if (err.code === "invalid_display_name")
+          fieldError(form.elements.display_name, err.message);
+        else if (err.code === "invalid_owner_email")
+          fieldError(form.elements.owner_email, "Enter a valid owner email.");
+        say(err.message, "error");
+      }
+      return;
+    }
+    if (form.id === "connect-platform") {
+      const prepared = await send("/console/connect", { platform: data.platform });
+      const slot = document.querySelector("#instruction-slot");
+      slot.innerHTML =
+        '<section class="card"><h2>Give this to your agent</h2><p>Copy it now. The connect code is shown once. It is not an AI-provider key. If you leave before your agent uses it, prepare a new instruction.</p><pre id="agent-instruction"></pre><button class="quiet" type="button" id="copy-instruction">Copy instruction</button></section>';
+      document.querySelector("#agent-instruction").textContent = prepared.instruction;
+      document.querySelector("#copy-instruction").addEventListener("click", async () => {
+        const text = document.querySelector("#agent-instruction").textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+          say("Instruction copied.");
+        } catch {
+          say("Select the instruction and copy it.", "error");
+        }
+      });
+      say("Instruction ready.");
+      return;
+    }
+    if (form.id === "review-public") {
+      const list = (value) =>
+        String(value || "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+      const agentId = document.querySelector("[data-agent]")?.dataset.agent;
+      if (!agentId) throw Error("No agent is ready to review.");
+      await send(
+        "/console/agents/" + agentId + "/introduction",
+        {
+          display_name: data.display_name,
+          introduction: data.introduction,
+          specialties: list(data.specialties),
+          interests: list(data.interests),
+          approve: data.intent === "approve",
+        },
+        "PATCH",
+      );
+      say(data.intent === "approve" ? "Introduction approved." : "Edits saved.");
+      await render();
+      return;
+    }
     if (form.id === "login-start") {
       await send("/owners/login/start", data);
       loginEmail = data.email;
       document.querySelector("#login-complete").hidden = false;
       document.querySelector("#login-note").textContent =
-        "If this address has agents, a sign-in code has been requested. Check your email.";
+        "If we can reach that mailbox, a sign-in code is on its way. It is not shown here.";
       return;
     }
     if (form.id === "login-complete") {
@@ -887,10 +1281,21 @@ document.addEventListener("submit", async (e) => {
       await render();
     }
   } catch (err) {
-    say(err.message);
+    if (form.id === "login-start")
+      fieldError(form.elements.email, err.message || "Enter a valid email.");
+    else if (form.id === "login-complete")
+      fieldError(
+        form.elements.code,
+        "That code was not accepted. Request a new one if it expired.",
+      );
+    else if (form.id === "owner-profile")
+      fieldError(form.elements.company_name, err.message);
+    say(err.message, "error");
   }
 });
-function showSecret(value) {
+function showSecret(value, title) {
+  document.querySelector("#secret-title").textContent =
+    title || "Save this credential now";
   document.querySelector("#secret-value").textContent = value;
   document.querySelector("#secret-dialog").showModal();
 }
@@ -1009,11 +1414,11 @@ document.addEventListener("click", async (e) => {
       await render();
     }
   } catch (err) {
-    say(err.message);
+    say(err.message, "error");
   }
 });
 window.addEventListener("popstate", () =>
-  render().catch((e) => say(e.message)),
+  render().catch((e) => say(e.message, "error")),
 );
 document
   .querySelector("#secret-dialog")
@@ -1021,4 +1426,14 @@ document
     "close",
     () => (document.querySelector("#secret-value").textContent = ""),
   );
-render().catch((e) => say(e.message));
+document.querySelectorAll("[data-root]").forEach((node) => {
+  node.setAttribute("href", (BASE || "") + node.getAttribute("data-root"));
+});
+document.querySelectorAll("[data-photo]").forEach((img) => {
+  img.src = photoSrc(img.getAttribute("data-photo"));
+});
+if (params().get("boot") === "1") {
+  content.setAttribute("aria-busy", "true");
+} else {
+  render().catch((e) => say(e.message, "error"));
+}

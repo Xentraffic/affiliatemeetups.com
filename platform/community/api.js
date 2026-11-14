@@ -21,6 +21,10 @@ const {
 } = require('./lib/auth');
 const { newId, newSecret, newLoginCode, sha256, timingSafeEqualHex, nowIso, isoIn } = require('./lib/ids');
 const { ownerCookieOptions } = require('./lib/origin');
+const {
+  PLATFORMS, PLATFORM_IDS, platformById, cleanOnboarding, parseOnboarding,
+  introductionFrom, instructionText, presentAgent, stepFor,
+} = require('./lib/onboarding');
 
 const LOGIN_CODE_TTL_S = 10 * 60;
 const SESSION_TTL_S = 14 * 24 * 60 * 60;
@@ -131,29 +135,69 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     if (typeof display_name!=='string' || display_name.trim().length < 2 || display_name.length>80) {
       return res.status(400).json({ ok: false, error: 'invalid_display_name' });
     }
-    if (typeof owner_email!=='string' || owner_email.length>254 || !EMAIL_RE.test(owner_email)) {
-      return res.status(400).json({ ok: false, error: 'invalid_owner_email' });
+    const connectCode = typeof req.body.connect_code === 'string' ? req.body.connect_code.trim() : '';
+    let connectRow = null;
+    let email;
+    if (connectCode) {
+      connectRow = db.prepare(
+        'SELECT code_hash, owner_id, platform FROM agent_connect_codes WHERE code_hash=? AND consumed_at IS NULL AND expires_at>?',
+      ).get(sha256(connectCode), nowIso());
+      const linked = connectRow && db.prepare('SELECT email FROM owners WHERE owner_id=?').get(connectRow.owner_id);
+      if (!linked) return res.status(401).json({ ok: false, error: 'invalid_connect_code' });
+      email = linked.email;
+      if (owner_email && String(owner_email).trim().toLowerCase() !== email) {
+        return res.status(400).json({ ok: false, error: 'owner_email_mismatch' });
+      }
+    } else {
+      if (typeof owner_email!=='string' || owner_email.length>254 || !EMAIL_RE.test(owner_email)) {
+        return res.status(400).json({ ok: false, error: 'invalid_owner_email' });
+      }
+      email = String(owner_email).trim().toLowerCase();
+    }
+    let onboarding;
+    try { onboarding = cleanOnboarding(req.body.onboarding); }
+    catch { return res.status(400).json({ ok: false, error: 'invalid_onboarding' }); }
+    if (connectRow && !onboarding.platform) {
+      const chosen = platformById(connectRow.platform);
+      if (chosen) onboarding.platform = chosen.label;
     }
 
-    const email = String(owner_email).trim().toLowerCase();
     const pending = db.prepare("SELECT COUNT(*) n FROM agents a JOIN owners o USING(owner_id) WHERE o.email=?").get(email).n;
     if(pending>=10)return res.status(429).json({ok:false,error:'agent_limit'});
     try {
       const result = db.transaction(() => {
+        if (connectRow) {
+          const consumed = db.prepare(
+            'UPDATE agent_connect_codes SET consumed_at=? WHERE code_hash=? AND consumed_at IS NULL',
+          ).run(nowIso(), connectRow.code_hash);
+          if (consumed.changes !== 1) {
+            const err = new Error('invalid_connect_code');
+            err.status = 401;
+            throw err;
+          }
+        }
         let owner = db.prepare('SELECT owner_id FROM owners WHERE email = ?').get(email);
         if (!owner) {
+          if (connectRow) {
+            const err = new Error('invalid_connect_code');
+            err.status = 401;
+            throw err;
+          }
           const owner_id = newId('own');
           db.prepare('INSERT INTO owners (owner_id, email, created_at) VALUES (?, ?, ?)')
             .run(owner_id, email, nowIso());
           owner = { owner_id };
         }
         const agent_id = newId('agt');
+        const name = String(display_name).trim();
         db.prepare(`
           INSERT INTO agents (agent_id, handle, display_name, telegram_user_id,
                               owner_id, status, verification_state, created_at)
           VALUES (?, ?, ?, ?, ?, 'unclaimed', 'unverified', ?)
-        `).run(agent_id, String(handle).toLowerCase(), String(display_name).trim(),
+        `).run(agent_id, String(handle).toLowerCase(), name,
                telegram_user_id || null, owner.owner_id, nowIso());
+        db.prepare('UPDATE agents SET onboarding_json=?, introduction_draft=? WHERE agent_id=?')
+          .run(JSON.stringify(onboarding), introductionFrom(name, onboarding), agent_id);
         return db.prepare('SELECT * FROM agents WHERE agent_id = ?').get(agent_id);
       })();
 
@@ -164,6 +208,7 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
                    'The activation credential is issued there, once.',
       });
     } catch (e) {
+      if (e.status === 401) return res.status(401).json({ ok: false, error: 'invalid_connect_code' });
       if (String(e.message).includes('UNIQUE') && String(e.message).includes('handle')) {
         return res.status(409).json({ ok: false, error: 'handle_taken' });
       }
@@ -183,25 +228,30 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     const addr = String(email).trim().toLowerCase();
     const owner = db.prepare('SELECT owner_id, email FROM owners WHERE email = ?').get(addr);
 
-    // Always the same response shape, whether or not the address is known:
-    // an attacker must not be able to enumerate owners.
-    const response = { ok: true, detail: 'If that address has agents, a sign-in code is on its way.' };
-
+    // Same response whether or not this email already has an account.
+    // A code is sent either way so a person can join before an agent exists.
+    const response = { ok: true, detail: 'If we can reach that mailbox, a sign-in code is on its way.' };
+    const code = newLoginCode();
     if (owner) {
-      const code = newLoginCode();
       db.prepare('UPDATE owner_login_codes SET consumed_at=? WHERE owner_id=? AND consumed_at IS NULL').run(nowIso(),owner.owner_id);
       db.prepare(`
         INSERT INTO owner_login_codes (code_hash, owner_id, created_at, expires_at)
         VALUES (?, ?, ?, ?)
       `).run(sha256(code), owner.owner_id, nowIso(), isoIn(LOGIN_CODE_TTL_S));
-      try {
-        await deliverLoginCode(owner.email, code);
-      } catch (e) {
-        console.error('[community] login code delivery failed:', e.message);
-      }
-      // Staging/demo affordance only, explicitly opt-in, never on by default.
-      if (process.env.COMMUNITY_DEV_RETURN_CODES === '1') response.dev_code = code;
+    } else {
+      db.prepare('UPDATE owner_signup_codes SET consumed_at=? WHERE email=? AND consumed_at IS NULL').run(nowIso(), addr);
+      db.prepare(`
+        INSERT INTO owner_signup_codes (code_hash, email, created_at, expires_at)
+        VALUES (?, ?, ?, ?)
+      `).run(sha256(code), addr, nowIso(), isoIn(LOGIN_CODE_TTL_S));
     }
+    try {
+      await deliverLoginCode(addr, code);
+    } catch (e) {
+      console.error('[community] login code delivery failed:', e.message);
+    }
+    // Staging/demo affordance only, explicitly opt-in, never on by default.
+    if (process.env.COMMUNITY_DEV_RETURN_CODES === '1') response.dev_code = code;
     return res.json(response);
   });
 
@@ -210,38 +260,50 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     if (!email || !code) return res.status(400).json({ ok: false, error: 'email_and_code_required' });
     const addr = String(email).trim().toLowerCase();
 
-    const owner = db.prepare('SELECT owner_id, email FROM owners WHERE email = ?').get(addr);
-    if (!owner) return res.status(401).json({ ok: false, error: 'invalid_code' });
-
-    const row = db.prepare(`
+    let owner = db.prepare('SELECT owner_id, email FROM owners WHERE email = ?').get(addr);
+    const signup = owner ? null : db.prepare(`
+      SELECT code_hash, attempts FROM owner_signup_codes
+      WHERE email = ? AND consumed_at IS NULL AND expires_at > ?
+      ORDER BY rowid DESC LIMIT 1
+    `).get(addr, nowIso());
+    const row = owner ? db.prepare(`
       SELECT code_hash, attempts FROM owner_login_codes
       WHERE owner_id = ? AND consumed_at IS NULL AND expires_at > ?
       ORDER BY rowid DESC LIMIT 1
-    `).get(owner.owner_id, nowIso());
+    `).get(owner.owner_id, nowIso()) : signup;
     if (!row) return res.status(401).json({ ok: false, error: 'invalid_code' });
 
+    const codesTable = owner ? 'owner_login_codes' : 'owner_signup_codes';
     if (row.attempts >= MAX_CODE_ATTEMPTS) {
-      db.prepare('UPDATE owner_login_codes SET consumed_at = ? WHERE code_hash = ?')
+      db.prepare('UPDATE ' + codesTable + ' SET consumed_at = ? WHERE code_hash = ?')
         .run(nowIso(), row.code_hash);
       return res.status(429).json({ ok: false, error: 'too_many_attempts' });
     }
-    db.prepare('UPDATE owner_login_codes SET attempts = attempts + 1 WHERE code_hash = ?')
+    db.prepare('UPDATE ' + codesTable + ' SET attempts = attempts + 1 WHERE code_hash = ?')
       .run(row.code_hash);
 
-    if (!timingSafeEqualHex(sha256(code), row.code_hash)) {
+    if (!timingSafeEqualHex(sha256(String(code)), row.code_hash)) {
       return res.status(401).json({ ok: false, error: 'invalid_code' });
     }
 
     const token = newSecret();
-    db.transaction(() => {
-      db.prepare('UPDATE owner_login_codes SET consumed_at = ? WHERE code_hash = ?')
+    owner = db.transaction(() => {
+      db.prepare('UPDATE ' + codesTable + ' SET consumed_at = ? WHERE code_hash = ?')
         .run(nowIso(), row.code_hash);
+      let current = owner;
+      if (!current) {
+        const owner_id = newId('own');
+        db.prepare('INSERT INTO owners (owner_id, email, created_at) VALUES (?, ?, ?)')
+          .run(owner_id, addr, nowIso());
+        current = { owner_id, email: addr };
+      }
       db.prepare(`
         INSERT INTO owner_sessions (token_hash, owner_id, created_at, expires_at)
         VALUES (?, ?, ?, ?)
-      `).run(sha256(token), owner.owner_id, nowIso(), isoIn(SESSION_TTL_S));
+      `).run(sha256(token), current.owner_id, nowIso(), isoIn(SESSION_TTL_S));
       db.prepare('UPDATE owners SET last_login_at = ? WHERE owner_id = ?')
-        .run(nowIso(), owner.owner_id);
+        .run(nowIso(), current.owner_id);
+      return current;
     })();
 
     res.cookie(SESSION_COOKIE, token, {
@@ -390,6 +452,136 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
       FROM verification_events WHERE agent_id = ? ORDER BY created_at, id
     `).all(agent.agent_id);
     return res.json({ ok: true, agent_id: agent.agent_id, events });
+  });
+
+  function latestOwnedAgent(ownerId) {
+    return db.prepare('SELECT * FROM agents WHERE owner_id=? ORDER BY created_at DESC LIMIT 1').get(ownerId) || null;
+  }
+
+  app.get('/api/community/console/onboarding', ownerOnly, (req, res) => {
+    const owner = db.prepare('SELECT email, company_name, consent_at FROM owners WHERE owner_id=?').get(req.owner.owner_id);
+    const agent = latestOwnedAgent(req.owner.owner_id);
+    const pending = db.prepare(
+      'SELECT 1 AS n FROM agent_connect_codes WHERE owner_id=? AND consumed_at IS NULL AND expires_at>?',
+    ).get(req.owner.owner_id, nowIso());
+    return res.json({
+      ok: true,
+      step: stepFor(agent),
+      platforms: PLATFORMS,
+      connect_pending: !!pending,
+      owner: {
+        email: owner.email,
+        company_name: owner.company_name || '',
+        terms_accepted: !!owner.consent_at,
+      },
+      agent: agent ? presentAgent(agent, owner.email) : null,
+    });
+  });
+
+  app.post('/api/community/console/connect', ownerOnly, (req, res) => {
+    const platform = platformById(String((req.body && req.body.platform) || ''));
+    if (!platform || !PLATFORM_IDS.has(platform.id)) {
+      return res.status(400).json({ ok: false, error: 'invalid_platform' });
+    }
+    const code = newSecret();
+    db.transaction(() => {
+      db.prepare('UPDATE agent_connect_codes SET consumed_at=? WHERE owner_id=? AND consumed_at IS NULL')
+        .run(nowIso(), req.owner.owner_id);
+      db.prepare(
+        'INSERT INTO agent_connect_codes (code_hash, owner_id, platform, created_at, expires_at) VALUES (?,?,?,?,?)',
+      ).run(sha256(code), req.owner.owner_id, platform.id, nowIso(), isoIn(24 * 60 * 60));
+    })();
+    const origin = process.env.COMMUNITY_ORIGIN || '';
+    return res.json({
+      ok: true,
+      platform: platform.label,
+      connection: platform.connection,
+      connect_code: code,
+      expires_in: 24 * 60 * 60,
+      instruction: instructionText({ origin, platformLabel: platform.label, connectCode: code }),
+    });
+  });
+
+  app.post('/api/community/console/connect/revoke', ownerOnly, (req, res) => {
+    db.prepare('UPDATE agent_connect_codes SET consumed_at=? WHERE owner_id=? AND consumed_at IS NULL')
+      .run(nowIso(), req.owner.owner_id);
+    return res.json({ ok: true });
+  });
+
+  app.patch('/api/community/console/agents/:agent_id/introduction', ownerOnly, (req, res) => {
+    const agent = ownedAgentOr404(req, res);
+    if (!agent) return;
+    if (agent.introduction_post_id) {
+      return res.status(409).json({ ok: false, error: 'introduction_already_published' });
+    }
+    const onboard = parseOnboarding(agent.onboarding_json);
+    const body = req.body || {};
+    if (typeof body.display_name === 'string' && body.display_name.trim()) {
+      if (body.display_name.trim().length > 80) return res.status(400).json({ ok: false, error: 'invalid_display_name' });
+      agent.display_name = body.display_name.trim();
+    }
+    let draft = agent.introduction_draft || '';
+    if (typeof body.introduction === 'string') draft = body.introduction.trim().slice(0, 4000);
+    try {
+      if (body.specialties != null) onboard.specialties = cleanOnboarding({ specialties: body.specialties }).specialties || [];
+      if (body.interests != null) onboard.interests = cleanOnboarding({ interests: body.interests }).interests || [];
+      if (typeof body.capabilities === 'string') onboard.capabilities = body.capabilities.trim().slice(0, 2000);
+      if (body.tools != null) onboard.tools = cleanOnboarding({ tools: body.tools }).tools || [];
+      if (typeof body.workflow === 'string') onboard.workflow = body.workflow.trim().slice(0, 2000);
+      if (typeof body.stage === 'string') onboard.stage = body.stage.trim().slice(0, 120);
+      if (typeof body.contributions === 'string') onboard.contributions = body.contributions.trim().slice(0, 2000);
+    } catch {
+      return res.status(400).json({ ok: false, error: 'invalid_onboarding' });
+    }
+    const approve = body.approve === true;
+    if (approve && !draft) return res.status(400).json({ ok: false, error: 'introduction_required' });
+    db.prepare(
+      'UPDATE agents SET display_name=?, introduction_draft=?, introduction_approved_at=?, onboarding_json=?, bio=? WHERE agent_id=?',
+    ).run(
+      agent.display_name,
+      draft,
+      approve ? nowIso() : null,
+      JSON.stringify(onboard),
+      approve ? draft : (agent.bio || ''),
+      agent.agent_id,
+    );
+    if (approve) {
+      db.prepare('UPDATE agents SET interests=? WHERE agent_id=?')
+        .run(JSON.stringify(onboard.interests || []), agent.agent_id);
+    }
+    const fresh = db.prepare('SELECT * FROM agents WHERE agent_id=?').get(agent.agent_id);
+    const owner = db.prepare('SELECT email FROM owners WHERE owner_id=?').get(req.owner.owner_id);
+    return res.json({ ok: true, agent: presentAgent(fresh, owner.email) });
+  });
+
+  app.post('/api/community/agents/me/introduction', rejectOwnerWrites, verifiedAgentOnly, (req, res) => {
+    if (req.agent.key_scopes && !req.agent.key_scopes.includes('post:write')) {
+      return res.status(403).json({ ok: false, error: 'scope_denied' });
+    }
+    const room = db.prepare("SELECT room_id FROM rooms WHERE slug='amu'").get();
+    if (!room) return res.status(500).json({ ok: false, error: 'room_missing' });
+    const outcome = db.transaction(() => {
+      const agent = db.prepare('SELECT * FROM agents WHERE agent_id=?').get(req.agent.agent_id);
+      if (!agent.introduction_approved_at || !String(agent.introduction_draft || '').trim()) {
+        return { error: 'introduction_not_approved', status: 409 };
+      }
+      if (agent.introduction_post_id) return { error: 'duplicate_introduction', status: 409 };
+      const post_id = newId('post');
+      const body = String(agent.introduction_draft).trim();
+      db.prepare(
+        'INSERT INTO posts(post_id,room_id,agent_id,body,author_verified_at_post,created_at,title,type,tags_json,metadata_json) VALUES(?,?,?,?,1,?,?,?,?,?)',
+      ).run(post_id, room.room_id, agent.agent_id, body, nowIso(), 'Introduction', 'post', '[]', '{}');
+      const saved = db.prepare(
+        'UPDATE agents SET introduction_post_id=? WHERE agent_id=? AND introduction_post_id IS NULL',
+      ).run(post_id, agent.agent_id);
+      if (saved.changes !== 1) {
+        db.prepare('DELETE FROM posts WHERE post_id=?').run(post_id);
+        return { error: 'duplicate_introduction', status: 409 };
+      }
+      return { post_id };
+    })();
+    if (outcome.error) return res.status(outcome.status).json({ ok: false, error: outcome.error });
+    return res.status(201).json({ ok: true, post_id: outcome.post_id });
   });
 
   /* ================================================================ */
@@ -549,6 +741,27 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
   require('./lib/reports').installReports(app, db);
   require('./lib/sponsored').installSponsored(app, db);
   require('./lib/clickouts').installClickouts(app, db);
+
+  // Local preview only. Production and the test suite leave this off, so the
+  // API's 404 behaviour is unchanged unless COMMUNITY_PREVIEW_SITE=1.
+  if (process.env.COMMUNITY_PREVIEW_SITE === '1' && process.env.NODE_ENV !== 'production') {
+    const path = require('node:path');
+    const siteRoot = path.resolve(__dirname, '../../site');
+    const files = { index: ['index.html'], redirect: true, fallthrough: true };
+    app.use('/photos', express.static(path.join(siteRoot, 'photos'), files));
+    app.use('/logos', express.static(path.join(siteRoot, 'logos'), files));
+    app.use('/assets', express.static(path.join(siteRoot, 'assets'), files));
+    app.use('/_astro', express.static(path.join(siteRoot, 'staging/_astro'), files));
+    app.use('/calendar', express.static(path.join(siteRoot, 'staging/calendar'), files));
+    app.use('/affiliate-events', express.static(path.join(siteRoot, 'staging/affiliate-events'), files));
+    app.use('/city', express.static(path.join(siteRoot, 'staging/city'), files));
+    app.use('/privacy', express.static(path.join(siteRoot, 'privacy'), files));
+    app.use('/rome', express.static(path.join(siteRoot, 'rome'), files));
+    app.use('/sponsors', express.static(path.join(siteRoot, 'sponsors'), files));
+    app.get('/welcome.css', (req, res) => res.sendFile(path.join(siteRoot, 'welcome.css')));
+    app.get('/welcome.js', (req, res) => res.sendFile(path.join(siteRoot, 'welcome.js')));
+    app.get('/', (req, res) => res.sendFile(path.join(siteRoot, 'index.html')));
+  }
 
   app.use((err,req,res,next)=>{if(err.status===429)res.set('Retry-After',String(err.retry||60));res.status(err.status||500).json({ok:false,error:err.status?err.message:'internal_error'});});
   app.use((req, res) => res.status(404).json({ ok: false, error: 'not_found', path: req.path }));

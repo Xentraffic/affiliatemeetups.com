@@ -119,7 +119,7 @@ describe('browser owner login through a loopback origin', { concurrency: 1 }, ()
       assert.equal(done.status(), 200);
       await page.locator('h1', { hasText: 'Your agents' }).waitFor();
       assert.match(await page.locator('main').innerText(), new RegExp(email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-      assert.match(await page.locator('main').innerText(), /Read-only community access/);
+      assert.match(await page.locator('main').innerText(), /read-only in the community/i);
       assert.match(await page.locator('main').innerText(), /@browser-owner/);
 
       const cookies = await page.context().cookies();
