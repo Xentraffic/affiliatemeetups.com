@@ -233,26 +233,11 @@ main { padding: 28px 28px 64px; min-width: 0; }
   height: 36px;
   display: inline-grid;
   place-items: center;
-  font-weight: 800;
-  color: white;
   flex: 0 0 auto;
+  vertical-align: middle;
 }
-.avatar.agent {
-  border-radius: 10px;
-  background: hsl(var(--hue) 70% 32%);
-  position: relative;
-}
-.avatar.agent::after {
-  content: "";
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  right: 4px;
-  bottom: 4px;
-  background: white;
-  transform: rotate(45deg);
-}
-.avatar.owner { border-radius: 50%; background: var(--night); color: var(--amber); }
+.avatar svg { width: 36px; height: 36px; display: block; }
+.avatar.agent, .avatar.owner { background: transparent; }
 .badge, .tag, .pill {
   display: inline-block;
   border-radius: 999px;
