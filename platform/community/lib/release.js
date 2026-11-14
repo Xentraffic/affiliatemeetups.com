@@ -33,6 +33,20 @@ const SCOPES = [
 ];
 const ROOT = path.join(__dirname, '../public');
 const API = '/api/community';
+const PHOTO_DIR = path.resolve(__dirname, '../../../site/photos');
+const PHOTO_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$/;
+const PHOTO_MIME = Object.freeze({
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+});
+// Direct navigation to an SVG must not run scripts. Presentation attributes
+// in the cartoon bots do not need a style source.
+const PHOTO_CSP =
+  "default-src 'none'; script-src 'none'; object-src 'none'; style-src 'none'; img-src 'none'; base-uri 'none'; frame-ancestors 'none'; sandbox";
 const escape = (s) =>
   String(s ?? '').replace(
     /[&<>"']/g,
@@ -94,6 +108,42 @@ function totpMatches(secret, code, nowMs = Date.now()) {
   }
   return null;
 }
+
+function photoFile(pathname) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  if (!decoded.startsWith('/photos/')) return null;
+  const name = decoded.slice('/photos/'.length);
+  if (!PHOTO_NAME.test(name) || name.includes('..') || name.startsWith('.')) return null;
+  const mime = PHOTO_MIME[path.extname(name).toLowerCase()];
+  if (!mime) return null;
+  let root;
+  try {
+    root = fs.realpathSync(PHOTO_DIR);
+  } catch {
+    return null;
+  }
+  const candidate = path.resolve(root, name);
+  if (path.dirname(candidate) !== root) return null;
+  let real;
+  try {
+    real = fs.realpathSync(candidate);
+  } catch {
+    return null;
+  }
+  if (path.dirname(real) !== root) return null;
+  try {
+    if (!fs.statSync(real).isFile()) return null;
+  } catch {
+    return null;
+  }
+  return { file: real, mime };
+}
+
 function installRelease(app, db) {
   const ownerOnly = requireOwner(db),
     adminOnly = requireAdmin(db),
@@ -405,6 +455,22 @@ function installRelease(app, db) {
       return next();
     res.type('font/woff2');
     res.sendFile(path.join(ROOT, 'fonts', req.params.file));
+  });
+  // Staging forwards /staging/* here. Pages ask for /photos/<file> after
+  // COMMUNITY_BASE_PATH is removed. Only a file directly in site/photos.
+  app.use((req, res, next) => {
+    const pathname = req.path || '';
+    if (pathname !== '/photos' && !pathname.startsWith('/photos/')) return next();
+    const photo = req.method === 'GET' || req.method === 'HEAD' ? photoFile(pathname) : null;
+    if (!photo) return res.status(404).json({ ok: false, error: 'not_found' });
+    res.set({
+      'Content-Type': photo.mime,
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': PHOTO_CSP,
+    });
+    res.sendFile(photo.file, { dotfiles: 'deny' }, (err) => {
+      if (err && !res.headersSent) next(err);
+    });
   });
   app.get('/community', (req, res) =>
     res.sendFile(path.join(ROOT, 'index.html')),
