@@ -11,19 +11,33 @@
  *   POST /saved                                 → save a message (L4.7)
  *   GET /saved/:user_id                         → get saved messages
  *   DELETE /saved/:user_id/:msg_id              → unsave
+ *
+ * Auth (fail closed when the env var is missing or shorter than 16 chars):
+ *   AMU_MEMBERS_READ_TOKEN  Bearer for /members/html, /leaderboard/html, /links*
+ *   AMU_SAVED_API_TOKEN     Bearer for /saved* (server-to-server only; the
+ *                           Telegram reaction handler is the only caller)
+ *   /digest, /digest/html and /health stay public.
+ * CORS: AMU_DIGEST_CORS_ORIGINS (comma-separated). Default: none.
  */
 
 const express = require('express');
 const cors = require('cors');
 const Database = require('better-sqlite3');
-const fs = require('fs');
+const { requireBearer, corsFromEnv } = require('./http-guards');
 
 const app = express();
 const PORT = 3852;
-const DB_PATH = '/home/xenhive/amu-platform/stats.db';
+const DB_PATH = process.env.AMU_STATS_DB || '/home/xenhive/amu-platform/stats.db';
 
-app.use(cors({ origin: '*' }));
-app.use(express.json());
+// Member names, onboarding answers, link authorship and saved messages are
+// personal data. Reads need the members read token; saved-message access is
+// a separate, write-capable token so a leaked read token cannot modify data.
+const requireMembersRead = requireBearer('AMU_MEMBERS_READ_TOKEN');
+const requireSavedApi = requireBearer('AMU_SAVED_API_TOKEN');
+const TELEGRAM_USER_ID = /^[0-9]{1,20}$/;
+
+app.use(cors(corsFromEnv('AMU_DIGEST_CORS_ORIGINS')));
+app.use(express.json({ limit: '32kb' }));
 
 function getDb(readonly = true) {
   return new Database(DB_PATH, { readonly });
@@ -196,7 +210,7 @@ app.get('/digest/html', (req, res) => {
 // ─── L4.6 LINK FEED ────────────────────────────────────────
 
 // GET /links?date=YYYY-MM-DD&channel=amu
-app.get('/links', (req, res) => {
+app.get('/links', requireMembersRead, (req, res) => {
   const date = req.query.date || new Date().toISOString().slice(0, 10);
   const channel = req.query.channel || 'amu';
   try {
@@ -211,7 +225,7 @@ app.get('/links', (req, res) => {
 });
 
 // GET /links/latest?channel=amu&limit=20
-app.get('/links/latest', (req, res) => {
+app.get('/links/latest', requireMembersRead, (req, res) => {
   const channel = req.query.channel || 'amu';
   const limit = Math.min(parseInt(req.query.limit) || 20, 100);
   try {
@@ -228,9 +242,12 @@ app.get('/links/latest', (req, res) => {
 // ─── L4.7 SAVED MESSAGES ───────────────────────────────────
 
 // POST /saved — save a message (called when user reacts with 🥰)
-app.post('/saved', (req, res) => {
-  const { user_id, channel, telegram_msg_id, message_text, from_username } = req.body;
+app.post('/saved', requireSavedApi, (req, res) => {
+  const { user_id, channel, telegram_msg_id, message_text, from_username } = req.body || {};
   if (!user_id || !telegram_msg_id) return res.status(400).json({ error: 'user_id and telegram_msg_id required' });
+  if (!TELEGRAM_USER_ID.test(String(user_id)) || !Number.isInteger(Number(telegram_msg_id))) {
+    return res.status(400).json({ error: 'invalid user_id or telegram_msg_id' });
+  }
   try {
     const db = getDb(false);
     db.prepare(`
@@ -242,12 +259,11 @@ app.post('/saved', (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /saved/:user_id — get user's saved messages
 // GET /links/html?channel=amu&limit=60 — the human-readable link feed.
 // Telegram's service account (777000) is the sender of everything auto-forwarded from
 // the linked XenTraffic channel. Publicly labelling those "shared by @Telegram" would
 // read like a bug, so they are attributed to the channel they actually came from.
-app.get('/links/html', (req, res) => {
+app.get('/links/html', requireMembersRead, (req, res) => {
   const channel = req.query.channel || 'amu';
   const limit = Math.min(parseInt(req.query.limit) || 60, 200);
   try {
@@ -329,7 +345,9 @@ app.get('/links/html', (req, res) => {
   } catch(e) { res.status(500).send('Error: ' + e.message); }
 });
 
-app.get('/saved/:user_id', (req, res) => {
+// GET /saved/:user_id — get user's saved messages (server-to-server only)
+app.get('/saved/:user_id', requireSavedApi, (req, res) => {
+  if (!TELEGRAM_USER_ID.test(req.params.user_id)) return res.status(400).json({ error: 'invalid user_id' });
   try {
     const db = getDb();
     const saved = db.prepare(`
@@ -342,7 +360,10 @@ app.get('/saved/:user_id', (req, res) => {
 });
 
 // DELETE /saved/:user_id/:msg_id — unsave
-app.delete('/saved/:user_id/:msg_id', (req, res) => {
+app.delete('/saved/:user_id/:msg_id', requireSavedApi, (req, res) => {
+  if (!TELEGRAM_USER_ID.test(req.params.user_id) || !/^[0-9]{1,20}$/.test(req.params.msg_id)) {
+    return res.status(400).json({ error: 'invalid user_id or msg_id' });
+  }
   try {
     const db = getDb(false);
     db.prepare('DELETE FROM saved_messages WHERE user_id = ? AND telegram_msg_id = ?')
@@ -383,7 +404,7 @@ const MEMBERS_CSS = PAGE_CSS + `
 `;
 
 // GET /members/html — member profiles page
-app.get('/members/html', (req, res) => {
+app.get('/members/html', requireMembersRead, (req, res) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -452,7 +473,7 @@ app.get('/members/html', (req, res) => {
 });
 
 // GET /leaderboard/html — live leaderboard page
-app.get('/leaderboard/html', (req, res) => {
+app.get('/leaderboard/html', requireMembersRead, (req, res) => {
   try {
     const db = getDb();
     const today = new Date().toISOString().slice(0, 10);
@@ -540,6 +561,9 @@ app.get('/health', (req, res) => res.json({ status: 'ok', service: 'amu-digest',
 if (require.main === module) {
   app.listen(PORT, '127.0.0.1', () => {
     console.log(`✅ AMU Digest/Links/Saved API on 127.0.0.1:${PORT}`);
+    for (const name of ['AMU_MEMBERS_READ_TOKEN', 'AMU_SAVED_API_TOKEN']) {
+      if (!process.env[name]) console.warn(`[amu-digest] ${name} is not set; its routes return 401.`);
+    }
   });
 }
 
