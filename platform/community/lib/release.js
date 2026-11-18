@@ -472,9 +472,25 @@ function installRelease(app, db) {
       if (err && !res.headersSent) next(err);
     });
   });
-  app.get('/community', (req, res) =>
-    res.sendFile(path.join(ROOT, 'index.html')),
-  );
+  // Root-absolute photo src from COMMUNITY_BASE_PATH so a trailing slash
+  // on /community or /staging/community cannot resolve photos relatively.
+  const COMMUNITY_INDEX_PLACEHOLDER = '__COMMUNITY_PHOTO_BASE__';
+  const COMMUNITY_INDEX_HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  if (!COMMUNITY_INDEX_HTML.includes(COMMUNITY_INDEX_PLACEHOLDER)) {
+    throw new Error('community index is missing ' + COMMUNITY_INDEX_PLACEHOLDER);
+  }
+  function communityBasePath() {
+    return String(process.env.COMMUNITY_BASE_PATH || '').replace(/\/+$/, '');
+  }
+  function renderCommunityIndex() {
+    return COMMUNITY_INDEX_HTML.replaceAll(
+      COMMUNITY_INDEX_PLACEHOLDER,
+      communityBasePath(),
+    );
+  }
+  app.get('/community', (req, res) => {
+    res.type('html').send(renderCommunityIndex());
+  });
   app.get('/community/', (req, res) =>
     res.redirect(308, (process.env.COMMUNITY_BASE_PATH || '') + '/community'),
   );
