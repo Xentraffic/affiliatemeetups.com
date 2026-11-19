@@ -479,21 +479,49 @@ function installRelease(app, db) {
   if (!COMMUNITY_INDEX_HTML.includes(COMMUNITY_INDEX_PLACEHOLDER)) {
     throw new Error('community index is missing ' + COMMUNITY_INDEX_PLACEHOLDER);
   }
+  // COMMUNITY_BASE_PATH is written into src="..." and into a redirect
+  // Location, so it is allowlisted: empty, or /segment[/segment...] where a
+  // segment is letters, digits, . _ ~ - (never dot-only). A trailing slash is
+  // trimmed. Anything else throws, and installRelease calls it once below so
+  // a bad value fails at startup instead of reaching a page.
   function communityBasePath() {
-    return String(process.env.COMMUNITY_BASE_PATH || '').replace(/\/+$/, '');
+    const base = String(process.env.COMMUNITY_BASE_PATH || '')
+      .trim()
+      .replace(/\/+$/, '');
+    if (base === '') return '';
+    const safe =
+      /^(?:\/[A-Za-z0-9._~-]+)+$/.test(base) &&
+      !base.split('/').some((seg) => /^\.+$/.test(seg));
+    if (!safe) {
+      throw new Error(
+        'COMMUNITY_BASE_PATH must be empty or a path starting with / such as /staging ' +
+          '(letters, digits, . _ ~ - only, no empty or dot-only segments)',
+      );
+    }
+    return base;
   }
+  communityBasePath();
   function renderCommunityIndex() {
     return COMMUNITY_INDEX_HTML.replaceAll(
       COMMUNITY_INDEX_PLACEHOLDER,
       communityBasePath(),
     );
   }
+  // The /community/ redirect is registered before the page route on purpose:
+  // Express does not use strict routing here, so app.get('/community') also
+  // matches '/community/' and a redirect registered after it never runs.
+  // 308 keeps the method; the query string is kept so UTM and amu_attr
+  // attribution survives the redirect. api.js has already removed the
+  // COMMUNITY_BASE_PATH prefix from req.url, so req.path is '/community/'.
+  app.use((req, res, next) => {
+    if (req.path !== '/community/') return next();
+    const q = req.originalUrl.indexOf('?');
+    const qs = q === -1 ? '' : req.originalUrl.slice(q);
+    return res.redirect(308, communityBasePath() + '/community' + qs);
+  });
   app.get('/community', (req, res) => {
     res.type('html').send(renderCommunityIndex());
   });
-  app.get('/community/', (req, res) =>
-    res.redirect(308, (process.env.COMMUNITY_BASE_PATH || '') + '/community'),
-  );
   app.get('/api/community/health', (req, res) =>
     res.json({
       ok: true,
