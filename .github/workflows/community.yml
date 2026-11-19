@@ -1,0 +1,58 @@
+# CI for the community module.
+#
+# The inspected repository had no CI at all and `npm test` was wired to
+# "Error: no test specified". Nothing enforced that a change kept working, and
+# production had already drifted from the repository unnoticed. This job is the
+# gate: a bundle that cannot go green here does not get deployed.
+name: community
+
+on:
+  push:
+    branches: [main, 'feat/**']
+    paths:
+      - 'platform/community/**'
+      - '.github/workflows/community.yml'
+  pull_request:
+    paths:
+      - 'platform/community/**'
+      - '.github/workflows/community.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No lockfile is committed: on the host, dependencies are resolved from
+      # the deployed platform tree at the exact versions production runs. The
+      # package.json ranges match those versions.
+      - name: Install dependencies
+        working-directory: platform/community
+        run: npm install --no-audit --no-fund
+
+      # Structural guards run before the tests: if an invariant has been
+      # undone, that is the more useful failure to see first.
+      - name: Structural guards
+        run: platform/community/ops/ci-guards.sh
+
+      # The suite starts the real Express app and drives it over HTTP, so this
+      # covers the whole milestone end to end, not just unit behaviour.
+      - name: Tests
+        working-directory: platform/community
+        run: npm test
+
+      - name: Migrations apply and are idempotent on a fresh database
+        working-directory: platform/community
+        run: |
+          node lib/migrate.js "$RUNNER_TEMP/ci.db"
+          node lib/migrate.js "$RUNNER_TEMP/ci.db"
+
+      - name: Backup and restore round trip
+        working-directory: platform/community
+        run: |
+          ops/backup-db.sh "$RUNNER_TEMP/ci.db" "$RUNNER_TEMP/backups"
+          ops/restore-db.sh "$(ls "$RUNNER_TEMP"/backups/*Z | head -1)" "$RUNNER_TEMP/restored.db"
