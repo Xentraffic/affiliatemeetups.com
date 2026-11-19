@@ -25,7 +25,7 @@ function readCookie(req, name) {
   for (const part of header.split(';')) {
     const i = part.indexOf('=');
     if (i === -1) continue;
-    if (part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+    if (part.slice(0, i).trim() === name) { try { return decodeURIComponent(part.slice(i + 1).trim()); } catch { return null; } }
   }
   return null;
 }
@@ -59,10 +59,13 @@ function resolveAgent(req, db) {
 
   // Lookup is by hash, so the plaintext credential never needs to be stored or
   // compared in the clear. The unique index on credential_hash makes this O(1).
-  return db.prepare(`
-    SELECT agent_id, handle, display_name, owner_id, status, verification_state
-    FROM agents WHERE credential_hash = ?
-  `).get(sha256(credential)) || null;
+  let agent = db.prepare('SELECT * FROM agents WHERE credential_hash = ?').get(sha256(credential));
+  if (agent && agent.credential_expires_at && agent.credential_expires_at <= nowIso()) return null;
+  if (!agent) {
+    const key = db.prepare('SELECT * FROM api_keys WHERE hash=? AND revoked_at IS NULL AND expires_at>?').get(sha256(credential),nowIso());
+    if (key) { agent=db.prepare('SELECT * FROM agents WHERE agent_id=?').get(key.agent_id); if(agent){agent.key_scopes=JSON.parse(key.scopes_json);agent.key_id=key.key_id;} }
+  }
+  return agent || null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -96,6 +99,7 @@ function requireAgent(db) {
 function requireVerifiedAgent(db) {
   const base = requireAgent(db);
   return (req, res, next) => base(req, res, () => {
+    if (req.agent.suspended) return res.status(403).json({ok:false,error:'agent_suspended'});
     if (req.agent.status !== 'claimed') {
       return res.status(403).json({ ok: false, error: 'agent_not_claimed' });
     }
@@ -116,15 +120,18 @@ function requireVerifiedAgent(db) {
  * is_admin in the database still cannot act as admin without this token, so
  * privilege never rides on owner-reachable state alone.
  */
-function requireAdmin() {
+function requireAdmin(db) {
   return (req, res, next) => {
+    const token = readCookie(req,'amu_admin_session');
+    if (db && token && db.prepare('SELECT 1 FROM admin_sessions WHERE token_hash=? AND expires_at>?').get(sha256(token),nowIso())) {req.admin=true;return next();}
+    if(process.env.NODE_ENV==='production') return res.status(403).json({ok:false,error:'admin_session_required'});
     const expected = process.env.COMMUNITY_ADMIN_TOKEN;
     if (!expected) {
       return res.status(503).json({ ok: false, error: 'admin_not_configured' });
     }
     const auth = req.headers.authorization || '';
     const provided = auth.startsWith('Admin ') ? auth.slice(6).trim() : null;
-    if (!provided || sha256(provided) !== sha256(expected)) {
+    if (!provided || !require('./ids').timingSafeEqualHex(sha256(provided), sha256(expected))) {
       return res.status(403).json({ ok: false, error: 'admin_token_invalid' });
     }
     req.admin = true;
@@ -166,6 +173,7 @@ function pickAllowedFields(body, allowlist, systemControlled = []) {
 
 module.exports = {
   SESSION_COOKIE,
+  readCookie,
   resolveOwner,
   resolveAgent,
   requireOwner,

@@ -1,0 +1,453 @@
+"use strict";
+const crypto = require("crypto");
+const { newId, nowIso, sha256 } = require("./ids");
+const { requireAdmin, requireOwner } = require("./auth");
+const { setting, slotEnabled } = require("./settings");
+const { offerFromRow } = require("./offers");
+
+const SLOT_TYPES = ["digest_strip", "room_header", "paid_pin", "featured_offer"];
+const FLAG_FOR = {
+  digest_strip: "slot_digest_enabled",
+  room_header: "slot_room_header_enabled",
+  paid_pin: "slot_paid_pin_enabled",
+  featured_offer: "slot_featured_offer_enabled",
+};
+
+function labelPack(db) {
+  return {
+    sponsorship_label: process.env.COMMUNITY_SPONSORED_LABEL || setting(db, "sponsored_label", "Sponsored"),
+    sponsorship_tooltip:
+      process.env.COMMUNITY_SPONSORED_TOOLTIP ||
+      setting(
+        db,
+        "sponsored_tooltip",
+        "Paid placement. Does not affect organic rankings, awards or Daily Digest winners.",
+      ),
+    sponsorship_disclosure:
+      process.env.COMMUNITY_SPONSORED_DISCLOSURE ||
+      setting(
+        db,
+        "sponsored_disclosure",
+        "Paid commercial placement. Not an organic ranking, award, or digest winner.",
+      ),
+  };
+}
+
+function clickPath(placementId) {
+  return (process.env.COMMUNITY_BASE_PATH || "") + "/api/community/sponsored/" + placementId + "/click";
+}
+
+function ctaLabel(row) {
+  const label = String(row.cta_label || "").trim();
+  return label || "Visit sponsor";
+}
+
+function publicSlot(db, row) {
+  if (!row) return null;
+  let disclosure = null;
+  if (row.target_post_id) {
+    const post = db.prepare("SELECT * FROM posts WHERE post_id=?").get(row.target_post_id);
+    const offer = offerFromRow(db, post);
+    if (offer) disclosure = offer.disclosure;
+  }
+  return {
+    placement_id: row.placement_id,
+    slot_type: row.slot_type,
+    pin_kind: row.slot_type === "paid_pin" ? "sponsored" : null,
+    is_sponsored: true,
+    organic: false,
+    affects_organic_rank: false,
+    eligible_for_awards: false,
+    ...labelPack(db),
+    headline: row.headline,
+    body: row.body,
+    destination_url: row.destination_url,
+    cta_label: ctaLabel(row),
+    click_path: clickPath(row.placement_id),
+    disclosure,
+    disclosure_label: disclosure?.label || null,
+  };
+}
+
+function pick(db, slotType, roomId) {
+  if (!slotEnabled(db, FLAG_FOR[slotType])) return null;
+  const rows = db
+    .prepare(
+      `SELECT * FROM sponsored_placements WHERE slot_type=? AND active=1 AND starts_on<=? AND ends_on>=? ORDER BY created_at_utc, placement_id`,
+    )
+    .all(slotType, todayKey(db), todayKey(db));
+  const match = rows.find((row) => {
+    if (roomId && row.room_id && row.room_id !== roomId) return false;
+    if (roomId && !row.room_id && slotType !== "digest_strip") return false;
+    if (!roomId && row.room_id) return false;
+    if (row.room_id) {
+      const room = db.prepare("SELECT sponsored_opt_out FROM rooms WHERE room_id=?").get(row.room_id);
+      if (room?.sponsored_opt_out) return false;
+    }
+    return true;
+  });
+  return match || null;
+}
+
+function todayKey() {
+  return require("./toronto").torontoDate(Date.now());
+}
+
+// Left in place for a future signed or server-side view signal. Public GETs
+// must not call this: impression rows are not billing-quality counts.
+function remember(db, row) {
+  if (!row) return null;
+  db.prepare(
+    "UPDATE sponsored_placements SET impression_count=impression_count+1 WHERE placement_id=?",
+  ).run(row.placement_id);
+  db.prepare("INSERT INTO sponsored_events VALUES(?,?,?,?,?)").run(
+    newId("sev"),
+    row.placement_id,
+    "impression",
+    "sponsored",
+    nowIso(),
+  );
+  return publicSlot(db, row);
+}
+
+function feedSlot(db, { roomSlug = null, surface = "feed", sandbox = false } = {}) {
+  if (sandbox || surface === "for-you" || surface === "rss") return null;
+  const room = roomSlug ? db.prepare("SELECT * FROM rooms WHERE slug=?").get(roomSlug) : null;
+  if (room?.sponsored_opt_out) return null;
+  const roomId = room?.room_id || null;
+  const order = [];
+  if (roomId) order.push(pick(db, "room_header", roomId));
+  if (roomSlug === "offers-partners") order.push(pick(db, "featured_offer", roomId));
+  if (roomId) order.push(pick(db, "paid_pin", roomId));
+  const chosen = order.find(Boolean) || null;
+  return publicSlot(db, chosen);
+}
+
+// A counted sponsored click is indicative, not billable.
+// It is the first request in COMMUNITY_SPONSORED_CLICK_DEDUPE_MS (default 30
+// minutes) for one placement and one visitor key, while that IP is still under
+// COMMUNITY_SPONSORED_CLICK_IP_LIMIT (default 30) per
+// COMMUNITY_SPONSORED_CLICK_IP_WINDOW_MS (default 10 minutes).
+// The visitor key is SHA-256(salt, placement id, IP, User-Agent). The IP
+// rate-limit key is SHA-256(salt, IP). Raw IPs and user-agents are not stored.
+// Salt is COMMUNITY_RATE_SECRET, or a process-local random value when unset.
+// Duplicate and over-limit requests still redirect and are not counted.
+// Unknown, inactive, flag-off, not-yet-started, and expired placements do not
+// redirect: they return 404 and write nothing.
+const DEDUPE_MS = 30 * 60 * 1000;
+const IP_WINDOW_MS = 10 * 60 * 1000;
+const IP_LIMIT = 30;
+const DEDUPE_CAP = 10000;
+const fallbackSalt = crypto.randomBytes(32).toString("hex");
+
+function positiveInt(name, fallback) {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : fallback;
+}
+
+function clickSalt() {
+  return process.env.COMMUNITY_RATE_SECRET || fallbackSalt;
+}
+
+function clientIp(req) {
+  return String(req.ip || req.socket?.remoteAddress || "");
+}
+
+function placementOpen(row, today) {
+  return !!(row && row.active && row.starts_on <= today && row.ends_on >= today);
+}
+
+function eligibleClick(db, row, today) {
+  return placementOpen(row, today) && !!slotEnabled(db, FLAG_FOR[row.slot_type]);
+}
+
+function pruneClickDedupe(db) {
+  const now = Date.now();
+  db.prepare("DELETE FROM sponsored_click_dedupe WHERE expires_at<=?").run(now);
+  const cap = positiveInt("COMMUNITY_SPONSORED_CLICK_DEDUPE_CAP", DEDUPE_CAP);
+  const n = db.prepare("SELECT COUNT(*) n FROM sponsored_click_dedupe").get().n;
+  if (n > cap) {
+    db.prepare(
+      `DELETE FROM sponsored_click_dedupe WHERE dedupe_key IN (
+         SELECT dedupe_key FROM sponsored_click_dedupe ORDER BY expires_at ASC LIMIT ?
+       )`,
+    ).run(n - cap);
+  }
+}
+
+function ipClickAllowed(db, bucket, limit, windowMs) {
+  const now = Date.now();
+  db.prepare("DELETE FROM rate_buckets WHERE bucket LIKE 'sponsored-click-ip:%' AND expires_at<=?").run(now);
+  const row = db.prepare("SELECT hits, expires_at FROM rate_buckets WHERE bucket=?").get(bucket);
+  if (!row || row.expires_at <= now) {
+    db.prepare(
+      "INSERT INTO rate_buckets(bucket,hits,expires_at) VALUES(?,?,?) ON CONFLICT(bucket) DO UPDATE SET hits=1, expires_at=excluded.expires_at",
+    ).run(bucket, 1, now + windowMs);
+    return true;
+  }
+  if (row.hits >= limit) return false;
+  db.prepare("UPDATE rate_buckets SET hits=hits+1 WHERE bucket=?").run(bucket);
+  return true;
+}
+
+// Writes click_count and the click event in one transaction. beforeEvent, when
+// it throws, rolls both back. Returns "counted", "deduped", or "ineligible".
+function recordSponsoredClick(db, { placementId, dedupeKey, expiresAt, today, beforeEvent } = {}) {
+  const run = db.transaction(() => {
+    const open = db
+      .prepare(
+        "SELECT 1 FROM sponsored_placements WHERE placement_id=? AND active=1 AND starts_on<=? AND ends_on>=?",
+      )
+      .get(placementId, today, today);
+    if (!open) return "ineligible";
+    const inserted = db
+      .prepare(
+        "INSERT INTO sponsored_click_dedupe(dedupe_key,placement_id,expires_at) VALUES(?,?,?) ON CONFLICT(dedupe_key) DO NOTHING",
+      )
+      .run(dedupeKey, placementId, expiresAt);
+    if (inserted.changes !== 1) return "deduped";
+    const updated = db
+      .prepare(
+        "UPDATE sponsored_placements SET click_count=click_count+1 WHERE placement_id=? AND active=1 AND starts_on<=? AND ends_on>=?",
+      )
+      .run(placementId, today, today);
+    if (updated.changes !== 1) throw new Error("click_count_not_updated");
+    if (beforeEvent) beforeEvent();
+    db.prepare("INSERT INTO sponsored_events VALUES(?,?,?,?,?)").run(
+      newId("sev"),
+      placementId,
+      "click",
+      "sponsored",
+      nowIso(),
+    );
+    return "counted";
+  });
+  return run();
+}
+
+function digestStrip(db, date) {
+  if (!slotEnabled(db, "slot_digest_enabled")) return null;
+  const row = db
+    .prepare(
+      `SELECT * FROM sponsored_placements WHERE slot_type='digest_strip' AND active=1 AND room_id IS NULL AND starts_on<=? AND ends_on>=? ORDER BY created_at_utc, placement_id LIMIT 1`,
+    )
+    .get(date, date);
+  return publicSlot(db, row);
+}
+
+function installSponsored(app, db) {
+  const adminOnly = requireAdmin(db);
+  const ownerOnly = requireOwner(db);
+  const endpoint = (fn) => (req, res, next) => {
+    try {
+      fn(req, res);
+    } catch (e) {
+      next(e);
+    }
+  };
+  app.get("/api/community/sponsored/:placement_id/click", (req, res, next) => {
+    try {
+      const today = todayKey();
+      const row = db.prepare("SELECT * FROM sponsored_placements WHERE placement_id=?").get(req.params.placement_id);
+      // Ineligible placements are not a click and are not a redirect.
+      if (!eligibleClick(db, row, today)) return res.status(404).json({ ok: false, error: "not_found" });
+      const ip = clientIp(req);
+      const ipKey = "sponsored-click-ip:" + sha256(clickSalt() + "\nip\n" + ip);
+      if (
+        !ipClickAllowed(
+          db,
+          ipKey,
+          positiveInt("COMMUNITY_SPONSORED_CLICK_IP_LIMIT", IP_LIMIT),
+          positiveInt("COMMUNITY_SPONSORED_CLICK_IP_WINDOW_MS", IP_WINDOW_MS),
+        )
+      ) {
+        return res.redirect(302, row.destination_url);
+      }
+      pruneClickDedupe(db);
+      const dedupeKey = sha256(
+        clickSalt() + "\nvisitor\n" + row.placement_id + "\n" + ip + "\n" + (req.get("user-agent") || ""),
+      );
+      const outcome = recordSponsoredClick(db, {
+        placementId: row.placement_id,
+        dedupeKey,
+        expiresAt: Date.now() + positiveInt("COMMUNITY_SPONSORED_CLICK_DEDUPE_MS", DEDUPE_MS),
+        today,
+      });
+      if (outcome === "ineligible") return res.status(404).json({ ok: false, error: "not_found" });
+      res.redirect(302, row.destination_url);
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.post(
+    "/api/community/admin/sponsored/flags",
+    adminOnly,
+    endpoint((req, res) => {
+      const allowed = Object.values(FLAG_FOR);
+      for (const [name, value] of Object.entries(req.body || {})) {
+        if (!allowed.includes(name) || typeof value !== "boolean") {
+          const e = Error("invalid_flag");
+          e.status = 400;
+          throw e;
+        }
+      }
+      for (const [name, value] of Object.entries(req.body || {}))
+        db.prepare("UPDATE settings SET value=? WHERE name=?").run(value ? "1" : "0", name);
+      res.json({ ok: true });
+    }),
+  );
+  app.post(
+    "/api/community/admin/sponsored/placements",
+    adminOnly,
+    endpoint((req, res) => {
+      const slot = req.body.slot_type;
+      if (!SLOT_TYPES.includes(slot)) {
+        const e = Error("invalid_slot_type");
+        e.status = 422;
+        throw e;
+      }
+      let destination;
+      try {
+        destination = new URL(String(req.body.destination_url || ""));
+      } catch {
+        destination = null;
+      }
+      if (!destination || destination.protocol !== "https:" || destination.username) {
+        const e = Error("invalid_destination_url");
+        e.status = 422;
+        throw e;
+      }
+      const headline = String(req.body.headline || "").trim();
+      if (!headline || headline.length > 180) {
+        const e = Error("invalid_text");
+        e.status = 400;
+        throw e;
+      }
+      let cta = "";
+      if (req.body.cta_label != null && req.body.cta_label !== "") {
+        if (typeof req.body.cta_label !== "string") {
+          const e = Error("invalid_text");
+          e.status = 400;
+          throw e;
+        }
+        cta = req.body.cta_label.trim();
+        if (!cta || cta.length > 40 || /[\u0000-\u001f]/.test(cta)) {
+          const e = Error("invalid_text");
+          e.status = 400;
+          throw e;
+        }
+      }
+      const starts = String(req.body.starts_on || "");
+      const ends = String(req.body.ends_on || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(starts) || !/^\d{4}-\d{2}-\d{2}$/.test(ends)) {
+        const e = Error("invalid_date");
+        e.status = 400;
+        throw e;
+      }
+      let roomId = null;
+      if (req.body.room_slug) {
+        const room = db.prepare("SELECT * FROM rooms WHERE slug=?").get(req.body.room_slug);
+        if (!room) {
+          const e = Error("room_not_found");
+          e.status = 404;
+          throw e;
+        }
+        if (room.sponsored_opt_out) {
+          const e = Error("room_opted_out");
+          e.status = 409;
+          throw e;
+        }
+        roomId = room.room_id;
+      }
+      if (slot !== "digest_strip" && !roomId) {
+        const e = Error("room_required");
+        e.status = 422;
+        throw e;
+      }
+      if (req.body.target_post_id) {
+        const post = db
+          .prepare(
+            "SELECT p.post_id, a.sponsor_opt_out FROM posts p JOIN agents a USING(agent_id) WHERE p.post_id=?",
+          )
+          .get(req.body.target_post_id);
+        if (!post) {
+          const e = Error("post_not_found");
+          e.status = 404;
+          throw e;
+        }
+        if (post.sponsor_opt_out) {
+          const e = Error("sponsor_opt_out");
+          e.status = 409;
+          throw e;
+        }
+      }
+      const id = newId("spk");
+      const now = nowIso();
+      db.prepare(
+        `INSERT INTO sponsored_placements(placement_id,slot_type,room_id,target_post_id,headline,body,destination_url,cta_label,active,internal_notes,starts_on,ends_on,created_at_utc,updated_at_utc)
+         VALUES(?,?,?,?,?,?,?,?,1,?,?,?,?,?)`,
+      ).run(
+        id,
+        slot,
+        roomId,
+        req.body.target_post_id || null,
+        headline,
+        String(req.body.body || ""),
+        destination.toString(),
+        cta,
+        String(req.body.internal_notes || ""),
+        starts,
+        ends,
+        now,
+        now,
+      );
+      res.status(201).json({ ok: true, placement: publicSlot(db, db.prepare("SELECT * FROM sponsored_placements WHERE placement_id=?").get(id)) });
+    }),
+  );
+  app.post(
+    "/api/community/console/agents/:agent_id/sponsor-opt-out",
+    ownerOnly,
+    endpoint((req, res) => {
+      const agent = db
+        .prepare("SELECT * FROM agents WHERE agent_id=? AND owner_id=?")
+        .get(req.params.agent_id, req.owner.owner_id);
+      if (!agent) {
+        const e = Error("agent_not_found");
+        e.status = 404;
+        throw e;
+      }
+      db.prepare("UPDATE agents SET sponsor_opt_out=? WHERE agent_id=?").run(
+        req.body.opt_out ? 1 : 0,
+        agent.agent_id,
+      );
+      res.json({ ok: true, sponsor_opt_out: !!req.body.opt_out });
+    }),
+  );
+  app.post(
+    "/api/community/admin/agents/:agent_id/official",
+    adminOnly,
+    endpoint((req, res) => {
+      const agent = db.prepare("SELECT agent_id FROM agents WHERE agent_id=?").get(req.params.agent_id);
+      if (!agent) {
+        const e = Error("agent_not_found");
+        e.status = 404;
+        throw e;
+      }
+      db.prepare("UPDATE agents SET operator_official=? WHERE agent_id=?").run(
+        req.body.official ? 1 : 0,
+        agent.agent_id,
+      );
+      res.json({ ok: true, operator_official: !!req.body.official });
+    }),
+  );
+}
+
+module.exports = {
+  SLOT_TYPES,
+  feedSlot,
+  digestStrip,
+  publicSlot,
+  installSponsored,
+  labelPack,
+  recordSponsoredClick,
+};

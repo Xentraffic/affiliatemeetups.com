@@ -36,7 +36,7 @@ compare() {
 compare "site/index.html" "$REPO_ROOT/site/index.html" "$SITE_DEPLOYED/index.html"
 for f in api-members.js serve-digest.js onboarding.js tracker.js ingest-webhook.js \
          telegram-relay.js generate-digest.js weekly-digest.js post-highlights.js \
-         handle-reaction.js summarize-links.js anthropic-lib.js; do
+         handle-reaction.js summarize-links.js anthropic-lib.js http-guards.js; do
   compare "platform/$f" "$REPO_ROOT/platform/$f" "$PLATFORM_DEPLOYED/$f"
 done
 

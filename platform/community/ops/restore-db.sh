@@ -3,6 +3,15 @@
 # and always sidelines the current database first.
 set -euo pipefail
 
+# Same permission rule as backup-db.sh, and for two paths that were both open:
+#   - the SIDELINED copy of the live database is created by `sqlite3 .backup`,
+#     so it landed 0644 — a world-readable copy of the whole database, including
+#     owner emails and sign-in material;
+#   - the RESTORED target inherited whatever mode already existed, because `cp`
+#     keeps an existing destination's mode.
+# Both are forced to 0600 below. `umask 077` alone would not have covered either.
+umask 077
+
 BACKUP="${1:-}"
 TARGET="${2:-${COMMUNITY_DB_PATH:-}}"
 FORCE="${3:-}"
@@ -36,10 +45,13 @@ fi
 
 if [[ -f "$TARGET" ]]; then
   SIDELINE="$TARGET.replaced-$(date -u +%Y%m%dT%H%M%SZ)"
-  sqlite3 "$TARGET" ".backup '$SIDELINE'" && echo "   current database preserved at $SIDELINE"
+  sqlite3 "$TARGET" ".backup '$SIDELINE'" && chmod 600 "$SIDELINE" \
+    && echo "   current database preserved at $SIDELINE (mode $(stat -c %a "$SIDELINE"))"
 fi
 
 cp "$BACKUP" "$TARGET"
+chmod 600 "$TARGET"
+chmod 700 "$(dirname "$TARGET")" 2>/dev/null || true
 rm -f "$TARGET-wal" "$TARGET-shm"
 echo "✅ restored $BACKUP → $TARGET"
 sqlite3 "$TARGET" "SELECT 'tables=' || COUNT(*) FROM sqlite_master WHERE type='table';"

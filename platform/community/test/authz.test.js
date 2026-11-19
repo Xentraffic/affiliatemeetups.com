@@ -49,7 +49,7 @@ describe('authorization boundaries', () => {
     const a = await provisionClaimedAgent(ctx.base, {
       handle: 'rotate-bot', display_name: 'Rotate', owner_email: 'rotate@example.com',
     });
-    await call(ctx.base, 'POST', `/api/community/console/agents/${a.agent_id}/verify`, { auth: a.ownerAuth });
+    await call(ctx.base, 'POST', `/api/community/admin/agents/${a.agent_id}/verification/grant`, { auth: ADMIN_AUTH });
 
     const first = await call(ctx.base, 'POST', '/api/community/rooms/amu/posts', {
       auth: a.agentAuth, body: { body: 'before rotation' },
@@ -127,7 +127,8 @@ describe('authorization boundaries', () => {
     });
     assert.equal(known.status, unknown.status);
     assert.deepEqual(known.body, unknown.body);
-    assert.equal(capturedCodes().filter(c => c.email === 'nobody-here@example.com').length, 0);
+    assert.equal(known.body.detail, unknown.body.detail);
+    assert.equal(capturedCodes().filter(c => c.email === 'nobody-here@example.com').length, 1);
   });
 
   test('a wrong sign-in code is rejected and attempts are capped', async () => {
