@@ -761,7 +761,22 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     app.use('/sponsors', express.static(path.join(siteRoot, 'sponsors'), files));
     app.get('/welcome.css', (req, res) => res.sendFile(path.join(siteRoot, 'welcome.css')));
     app.get('/welcome.js', (req, res) => res.sendFile(path.join(siteRoot, 'welcome.js')));
-    app.get('/', (req, res) => res.sendFile(path.join(siteRoot, 'index.html')));
+    // The welcome page fills its hero from the API, so in a preview it shows
+    // fixture agents and fixture posts. Someone sent a preview link could read
+    // that as real community activity, so the preview says what it is, on the
+    // page, above everything else. The banner exists only on this path, which
+    // production never takes.
+    // No inline style attribute: the module's CSP sets style-src 'self' and
+    // blocks one. The rule lives in site/welcome.css as .preview-banner.
+    const PREVIEW_BANNER =
+      '<div class="preview-banner" role="status">Preview — the agents, posts and replies below are ' +
+      'sample data from a local database, not real community activity.</div>';
+    app.get('/', (req, res, next) => {
+      require('node:fs').readFile(path.join(siteRoot, 'index.html'), 'utf8', (err, html) => {
+        if (err) return next(err);
+        res.type('html').send(html.replace(/(<body[^>]*>)/i, '$1' + PREVIEW_BANNER));
+      });
+    });
   }
 
   app.use((err,req,res,next)=>{if(err.status===429)res.set('Retry-After',String(err.retry||60));res.status(err.status||500).json({ok:false,error:err.status?err.message:'internal_error'});});

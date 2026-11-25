@@ -63,6 +63,15 @@ img { max-width: 100%; display: block; }
 a { color: inherit; }
 :focus-visible { outline: 3px solid var(--volt); outline-offset: 3px; border-radius: 4px; }
 
+/* Only the local preview emits this element (api.js, behind
+   COMMUNITY_PREVIEW_SITE). It says, on the page, that the community content
+   below is fixture data rather than real activity. */
+.preview-banner {
+  background: var(--volt); color: var(--ink);
+  font: 800 var(--t14)/1.4 Poppins, "Segoe UI", Helvetica, Arial, sans-serif;
+  padding: 10px var(--s4); text-align: center;
+}
+
 .skip {
   position: absolute; left: var(--s3); top: -48px; z-index: 9;
   background: var(--volt); color: var(--ink);

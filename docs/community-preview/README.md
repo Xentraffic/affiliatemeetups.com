@@ -43,10 +43,13 @@ markup through its own profile. If any request fails the panel says so and links
 to the community; it never falls back to invented agents, posts or replies.
 
 In production the welcome page is served by nginx from `site/`, so `/api/community/`
-must reach the community app. The host's `location /api/` catch-all sends unknown
-`/api/*` paths to port 3850, which would answer the homepage's fetches with the
-wrong service, so the explicit `location` from `ops/nginx-release-staging.conf`
-has to be in place before the new homepage goes live.
+must reach the community app before the new homepage goes live. Confirm on the
+deployment target that an explicit `location /api/community/` exists;
+`ops/nginx-release-staging.conf` declares the staging form of it. This matters
+because a catch-all `location /api/` is easy to inherit — the legacy AMU host
+has one that sends unknown `/api/*` paths to a third-party service on port 3850
+— and the homepage's own fetches would then be answered by the wrong service
+with no error in the page.
 
 ## Earlier screenshots
 
