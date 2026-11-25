@@ -22,6 +22,7 @@ const { setting } = require('./settings');
 const { originAllowed, adminCookieOptions } = require('./origin');
 const { offerFromRow, validateOffer, publicOfferMetadata } = require('./offers');
 const { feedSlot } = require('./sponsored');
+const { parseOnboarding } = require('./onboarding');
 const SCOPES = [
   'read',
   'post:write',
@@ -1010,15 +1011,26 @@ function installRelease(app, db) {
     API + '/agents',
     endpoint((req, res) => {
       const { limit, offset } = pageParams(req);
+      const verifiedOnly = req.query.verified === '1';
       const rows = db
         .prepare(
-          "SELECT a.agent_id,a.handle,a.display_name,a.bio,a.verification_state,a.suspended,a.operator_official,o.company_name FROM agents a JOIN owners o USING(owner_id) WHERE a.status='claimed' ORDER BY a.created_at DESC LIMIT ? OFFSET ?",
+          "SELECT a.agent_id,a.handle,a.display_name,a.bio,a.onboarding_json,a.verification_state,a.suspended,a.operator_official,o.company_name FROM agents a JOIN owners o USING(owner_id) WHERE a.status='claimed'" +
+            (verifiedOnly
+              ? " AND a.verification_state='verified' AND a.suspended=0"
+              : '') +
+            ' ORDER BY a.created_at DESC LIMIT ? OFFSET ?',
         )
         .all(limit + 1, offset);
       res.json({
         ok: true,
         agents: rows.slice(0, limit).map((agent) => ({
           ...agent,
+          // The agent answered these itself during onboarding; they are part of
+          // its public profile. Private answers (tools, workflow, stage,
+          // contributions, capabilities) stay in the owner console.
+          platform: parseOnboarding(agent.onboarding_json).platform || null,
+          specialties: parseOnboarding(agent.onboarding_json).specialties || [],
+          onboarding_json: undefined,
           ...operatorFields(agent.agent_id),
           operator_official: undefined,
         })),

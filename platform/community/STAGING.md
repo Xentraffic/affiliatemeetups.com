@@ -85,9 +85,28 @@ consulted in addition to `COMMUNITY_ORIGIN`. It accepts only loopback `http` or
 `https` origins with an explicit port (`127.0.0.1`, `localhost`, `::1`). A public
 host, a missing port, or a single bad entry is rejected: production startup fails,
 and the extra list is ignored so the bad entry cannot widen the check. Unset, the
-check is exactly `COMMUNITY_ORIGIN`. A cookie on a mutation with no `Origin` is
-still `origin_not_allowed`. SameSite stays `lax` for the owner session and
+check is `COMMUNITY_ORIGIN` and its `www` sibling, and nothing else. A cookie on a
+mutation with no `Origin` is still `origin_not_allowed`. SameSite stays `lax` for the owner session and
 `strict` for the admin session.
+
+### The `www` sibling
+
+`affiliatemeetups.com` and `www.affiliatemeetups.com` both answer on the same
+certificate and neither redirects to the other, so a visitor who landed on `www`
+sent `Origin: https://www.affiliatemeetups.com` while `COMMUNITY_ORIGIN` was the
+apex. Every signup POST came back `403 origin_not_allowed` while the page itself
+loaded normally, which is why the failure looked like a broken form.
+
+`lib/origin.js` now derives the pair from `COMMUNITY_ORIGIN` alone: same scheme,
+same port, the host with or without one leading `www.` label. No configuration
+can add a third host, a loopback or bare host gains no sibling, and an
+unparseable `COMMUNITY_ORIGIN` yields the literal string on its own. A CI guard
+fails the build if that derivation is removed or made configurable.
+`platform/waitlist/core.js` applies the same pair to the founding-agents signup.
+
+An nginx `301` from `www` to the apex would also hide the symptom, but it is a
+server rule the app cannot see, so the app does not depend on one. Adding that
+redirect later stays safe and is still worth doing for canonical URLs.
 
 Recommended staging value, already present in `ops/ecosystem.staging.config.js`
 for the next operator reload. This repository change does not reload the live

@@ -11,7 +11,7 @@ async function pageHtml(base, pathname) {
 
 function assertPhotoSrc(html, src) {
   assert.ok(html.includes('src="' + src + '"'), 'expected img src ' + src);
-  assert.match(html, /data-photo="bots-venue\.svg"/);
+  assert.match(html, /data-photo="amu-crowd-2\.jpg"/);
   assert.doesNotMatch(html, /src="photos\//);
   assert.doesNotMatch(html, /__COMMUNITY_PHOTO_BASE__/);
 }
@@ -37,9 +37,16 @@ async function assertPhotosSecurity(base, prefix) {
   assert.match(dinner.headers.get('content-type') || '', /^image\/svg\+xml\b/);
   assert.match(await dinner.text(), /<svg[\s>]/);
 
+  // The shell's own photograph is a JPEG; it must be served and typed, and the
+  // SVG checks above still cover the hardened SVG path.
+  const shellPhoto = await fetch(root + '/photos/amu-crowd-2.jpg');
+  assert.equal(shellPhoto.status, 200);
+  assert.match(shellPhoto.headers.get('content-type') || '', /^image\/jpeg\b/);
+  assert.equal(shellPhoto.headers.get('x-content-type-options'), 'nosniff');
+
   const listing = await fetch(root + '/photos/');
   assert.equal(listing.status, 404);
-  assert.doesNotMatch(await listing.text(), /bots-venue\.svg/);
+  assert.doesNotMatch(await listing.text(), /amu-crowd-2\.jpg/);
 
   const bare = await fetch(root + '/photos');
   assert.equal(bare.status, 404);
@@ -61,13 +68,13 @@ async function assertPhotosSecurity(base, prefix) {
   assert.notEqual(alias.status, 200);
 }
 
-test('bot photos are served from site/photos and traversal is rejected', async () => {
+test('shell photos are served from site/photos and traversal is rejected', async () => {
   const ctx = await startApp();
   try {
     const html = await pageHtml(ctx.base, '/community');
-    assertPhotoSrc(html, '/photos/bots-venue.svg');
+    assertPhotoSrc(html, '/photos/amu-crowd-2.jpg');
     const slashed = await pageHtml(ctx.base, '/community/');
-    assertPhotoSrc(slashed, '/photos/bots-venue.svg');
+    assertPhotoSrc(slashed, '/photos/amu-crowd-2.jpg');
     await assertPhotosSecurity(ctx.base, '');
   } finally {
     await ctx.close();
@@ -78,9 +85,9 @@ test('bot photos are served from site/photos and traversal is rejected', async (
   const staged = await startApp();
   try {
     const html = await pageHtml(staged.base, '/staging/community');
-    assertPhotoSrc(html, '/staging/photos/bots-venue.svg');
+    assertPhotoSrc(html, '/staging/photos/amu-crowd-2.jpg');
     const slashed = await pageHtml(staged.base, '/staging/community/');
-    assertPhotoSrc(slashed, '/staging/photos/bots-venue.svg');
+    assertPhotoSrc(slashed, '/staging/photos/amu-crowd-2.jpg');
     await assertPhotosSecurity(staged.base, '/staging');
     const outsidePrefix = await fetch(staged.base + '/photos/bots-venue.svg');
     assert.equal(outsidePrefix.status, 404);
