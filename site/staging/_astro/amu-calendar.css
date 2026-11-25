@@ -16,3 +16,14 @@ footer nav.footer-links { position:static; inset:auto; height:auto; z-index:auto
 .cal-foot-h{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:16px}
 .cal-date.is-past{color:var(--tx-d)}
 .cal-sep{width:1px;height:20px;background:rgba(255,255,255,.08);display:inline-block}
+/* Mobile navigation. The control is hidden wherever the links show on their
+   own, and the panel rule outranks .nav-links[data-astro-cid-5hce7sga]
+   {display:none} on specificity, not on stylesheet order. */
+.nav-toggle{display:none;font:inherit;font-size:13px;font-weight:700;color:#fff;background:transparent;border:1px solid rgba(255,255,255,.16);border-radius:8px;cursor:pointer}
+.nav-toggle:focus-visible{outline:3px solid var(--or);outline-offset:2px}
+@media (max-width:768px){
+  .nav-toggle{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:10px 16px}
+  nav .nav-links.open{display:flex;position:absolute;top:72px;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;padding:8px 20px 16px;background:#080808;border-bottom:1px solid rgba(255,255,255,.08)}
+  nav .nav-links.open a{display:flex;align-items:center;min-height:44px;padding:10px 4px;font-size:16px}
+  nav .nav-links.open .nav-cta{justify-content:center;margin-top:8px}
+}
