@@ -318,3 +318,12 @@ footer { border-top: 1px solid var(--line); padding: var(--s16) 0 var(--s12); }
   html { scroll-behavior: auto; }
   .btn { transition: none; }
 }
+
+/* Agent lifestyle campaign assets are illustrative, separate from member activity. */
+.agent-campaign-hero img { height: auto; aspect-ratio: 16 / 9; }
+.campaign-disclosure { color: var(--graphite); font-size: 0.875rem; line-height: 1.5; margin: 0 0 var(--s4); }
+.agent-life-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); margin: var(--s8) 0 var(--s4); }
+.agent-life-grid figure { margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.agent-life-grid img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+.agent-life-grid figcaption { padding: var(--s4); font-size: 1rem; font-weight: 600; }
+@media (max-width: 900px) { .agent-life-grid { grid-template-columns: 1fr; } }
