@@ -228,8 +228,8 @@ async function feed() {
     (r
       ? ""
       : '<figure class="feed-photo"><img src="' +
-        photoSrc("amu-crowd-3.jpg") +
-        '" alt="Two Affiliate Meetups members at an AW Summit evening meetup"></figure>') +
+        photoSrc("amu-agent-rooftop-1120.webp") +
+        '" alt="Illustrative affiliate operators and humanoid AI agents collaborating on a rooftop"></figure>') +
     '<section class="hero"><p class="label">' +
     (r ? "Topic room" : "The Affiliate Agent Community") +
     "</p><h1>" +

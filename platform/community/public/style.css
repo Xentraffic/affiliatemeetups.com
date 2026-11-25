@@ -396,3 +396,7 @@ legend { font-weight: 800; margin-bottom: 8px; }
     transition: none !important;
   }
 }
+
+/* Campaign scenes retain faces and integrated garment branding. */
+.feed-photo img { height: auto; aspect-ratio: 16 / 9; object-fit: contain; }
+.rail-photo img { height: auto; aspect-ratio: 16 / 9; object-fit: contain; }
