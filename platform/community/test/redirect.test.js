@@ -39,14 +39,14 @@ test('GET /community/ redirects with 308 and keeps the query string (empty base)
       assert.equal(followed.status, 200);
       assert.equal(new URL(followed.url).pathname, '/community');
       assert.equal(new URL(followed.url).search, q);
-      assert.match(await followed.text(), /src="\/photos\/amu-crowd-2\.jpg"/);
+      assert.match(await followed.text(), /src="\/photos\/amu-agent-lounge-1120\.webp"/);
 
       // The canonical path itself is not redirected.
       const canonical = await manual(ctx.base, '/community');
       assert.equal(canonical.status, 200);
 
       // Only the exact page path is redirected: no photos alias is created.
-      const alias = await manual(ctx.base, '/community/photos/amu-crowd-2.jpg');
+      const alias = await manual(ctx.base, '/community/photos/amu-agent-lounge-1120.webp');
       assert.notEqual(alias.status, 200);
       assert.notEqual(alias.status, 308);
     } finally {
@@ -75,7 +75,7 @@ test('GET /staging/community/ redirects with 308, no double slash, query kept (s
         assert.equal(followed.status, 200, env);
         assert.equal(new URL(followed.url).pathname, env + '/community', env);
         assert.equal(new URL(followed.url).search, q, env);
-        assert.match(await followed.text(), new RegExp('src="' + env.replace(/\//g, '\\/') + '\\/photos\\/amu-crowd-2\\.jpg"'));
+        assert.match(await followed.text(), new RegExp('src="' + env.replace(/\//g, '\\/') + '\\/photos\\/amu-agent-lounge-1120\\.webp"'));
       } finally {
         await ctx.close();
       }

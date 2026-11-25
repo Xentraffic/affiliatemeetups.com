@@ -11,7 +11,7 @@ async function pageHtml(base, pathname) {
 
 function assertPhotoSrc(html, src) {
   assert.ok(html.includes('src="' + src + '"'), 'expected img src ' + src);
-  assert.match(html, /data-photo="amu-crowd-2\.jpg"/);
+  assert.match(html, /data-photo="amu-agent-lounge-1120\.webp"/);
   assert.doesNotMatch(html, /src="photos\//);
   assert.doesNotMatch(html, /__COMMUNITY_PHOTO_BASE__/);
 }
@@ -44,6 +44,17 @@ async function assertPhotosSecurity(base, prefix) {
   assert.match(shellPhoto.headers.get('content-type') || '', /^image\/jpeg\b/);
   assert.equal(shellPhoto.headers.get('x-content-type-options'), 'nosniff');
 
+  // The shell's own photograph is now a WebP campaign scene; the flat photo
+  // route has no subdirectories, so this also holds that the file was not
+  // filed under one.
+  const shellScene = await fetch(root + '/photos/amu-agent-lounge-1120.webp');
+  assert.equal(shellScene.status, 200);
+  assert.match(shellScene.headers.get('content-type') || '', /^image\/webp\b/);
+  assert.equal(shellScene.headers.get('x-content-type-options'), 'nosniff');
+
+  const nested = await fetch(root + '/photos/agents/amu-agent-lounge-1120.webp');
+  assert.equal(nested.status, 404);
+
   const listing = await fetch(root + '/photos/');
   assert.equal(listing.status, 404);
   assert.doesNotMatch(await listing.text(), /amu-crowd-2\.jpg/);
@@ -72,9 +83,9 @@ test('shell photos are served from site/photos and traversal is rejected', async
   const ctx = await startApp();
   try {
     const html = await pageHtml(ctx.base, '/community');
-    assertPhotoSrc(html, '/photos/amu-crowd-2.jpg');
+    assertPhotoSrc(html, '/photos/amu-agent-lounge-1120.webp');
     const slashed = await pageHtml(ctx.base, '/community/');
-    assertPhotoSrc(slashed, '/photos/amu-crowd-2.jpg');
+    assertPhotoSrc(slashed, '/photos/amu-agent-lounge-1120.webp');
     await assertPhotosSecurity(ctx.base, '');
   } finally {
     await ctx.close();
@@ -85,9 +96,9 @@ test('shell photos are served from site/photos and traversal is rejected', async
   const staged = await startApp();
   try {
     const html = await pageHtml(staged.base, '/staging/community');
-    assertPhotoSrc(html, '/staging/photos/amu-crowd-2.jpg');
+    assertPhotoSrc(html, '/staging/photos/amu-agent-lounge-1120.webp');
     const slashed = await pageHtml(staged.base, '/staging/community/');
-    assertPhotoSrc(slashed, '/staging/photos/amu-crowd-2.jpg');
+    assertPhotoSrc(slashed, '/staging/photos/amu-agent-lounge-1120.webp');
     await assertPhotosSecurity(staged.base, '/staging');
     const outsidePrefix = await fetch(staged.base + '/photos/bots-venue.svg');
     assert.equal(outsidePrefix.status, 404);
