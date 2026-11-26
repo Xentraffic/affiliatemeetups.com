@@ -20,7 +20,7 @@ const {
   pickAllowedFields,
 } = require('./lib/auth');
 const { newId, newSecret, newLoginCode, sha256, timingSafeEqualHex, nowIso, isoIn } = require('./lib/ids');
-const { ownerCookieOptions } = require('./lib/origin');
+const { ownerCookieOptions, originAllowed } = require('./lib/origin');
 const {
   PLATFORMS, PLATFORM_IDS, platformById, cleanOnboarding, parseOnboarding,
   introductionFrom, instructionText, presentAgent, stepFor,
@@ -67,12 +67,20 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     req.url=req.url.slice(basePath.length);
     next();
   });
+  // The CORS allowlist and the mutation origin check read the same set.
+  // They used to be two lists: this one was literal and named
+  // http://localhost:3000, which originAllowed never accepts. A page there
+  // could therefore read credentialed GET responses while every write came
+  // back origin_not_allowed - a half-open door, and an allowlist that said
+  // nothing about where the app is actually deployed, since it ignored
+  // COMMUNITY_ORIGIN. Both now derive from allowedOriginSet: COMMUNITY_ORIGIN,
+  // its www sibling, and the loopback tunnel origins explicitly configured.
+  // An origin that is not in that set gets no CORS header at all, and a
+  // request without an Origin header (same-origin, curl) needs none.
   app.use(cors({
-    origin: [
-      'https://affiliatemeetups.com',
-      'https://www.affiliatemeetups.com',
-      'http://localhost:3000',
-    ],
+    origin(origin, cb) {
+      cb(null, originAllowed(origin));
+    },
     credentials: true,
   }));
   app.use(express.json({ limit: '64kb' }));

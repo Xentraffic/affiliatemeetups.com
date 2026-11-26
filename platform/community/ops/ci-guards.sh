@@ -90,6 +90,18 @@ else bad "lib/origin.js no longer derives the www sibling - www visitors get ori
 widened="$(grep -cE "siteOrigins[^)]*\)[^{]*\{[^}]*env\.(COMMUNITY_ALT|COMMUNITY_EXTRA)" platform/community/lib/origin.js)"
 if [[ "${widened:-0}" -eq 0 ]]; then ok "no environment variable can add a third site origin"
 else bad "siteOrigins reads an extra-origin environment variable"; fi
+# The CORS allowlist and the mutation origin check must read the same set. A
+# literal list here drifts: it used to name http://localhost:3000, which
+# originAllowed never accepts, so that page could read credentialed responses
+# while every write was refused.
+if grep -qE 'cors\(\{' platform/community/api.js && grep -qE 'cb\(null, originAllowed\(origin\)\)' platform/community/api.js; then
+  ok "the CORS allowlist is derived from originAllowed"
+else
+  bad "platform/community/api.js no longer derives its CORS allowlist from originAllowed"
+fi
+lit="$(grep -cE "^\s*'https?://[a-z0-9.:-]+',?$" platform/community/api.js)"
+if [[ "${lit:-0}" -eq 0 ]]; then ok "no literal origin is listed in api.js"
+else bad "api.js lists $lit literal origin(s) - the two allowlists will drift again"; fi
 wl="$(grep -c 'function siteOrigins' platform/waitlist/core.js)"
 if [[ "${wl:-0}" -ge 1 ]]; then ok "the waitlist signup applies the same origin pair"
 else bad "platform/waitlist/core.js lost siteOrigins - www signups 403 again"; fi
