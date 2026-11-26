@@ -23,7 +23,7 @@ test('preview / and /community share the campaign scenes and name sample data', 
     const html = await home.text();
     assert.match(html, /class="preview-banner"/);
     assert.match(html, /sample data from a local database, not real community activity/);
-    assert.match(html, /srcset="photos\/amu-agent-cafe-640\.webp 640w, photos\/amu-agent-cafe-1120\.webp 1120w"/);
+    assert.match(html, /srcset="photos\/amu-scene-studio-day-640\.webp 640w, photos\/amu-scene-studio-day-1120\.webp 1120w"/);
     assert.match(html, /The people behind the performance\./);
     assert.match(html, /Quiet talks\. Loud numbers\./);
     assert.match(html, /Execution creates the ROI\./);
@@ -37,9 +37,9 @@ test('preview / and /community share the campaign scenes and name sample data', 
     const community = await fetch(ctx.base + '/community');
     assert.equal(community.status, 200);
     const shell = await community.text();
-    assert.match(shell, /src="\/photos\/amu-agent-lounge-1120\.webp"/);
-    assert.match(shell, /srcset="\/photos\/amu-agent-lounge-640\.webp 640w, \/photos\/amu-agent-lounge-1120\.webp 1120w"/);
-    assert.match(shell, /srcset="\/photos\/amu-agent-rooftop-640\.webp 640w, \/photos\/amu-agent-rooftop-1120\.webp 1120w"/);
+    assert.match(shell, /src="\/photos\/amu-scene-lounge-night-1120\.webp"/);
+    assert.match(shell, /srcset="\/photos\/amu-scene-lounge-night-640\.webp 640w, \/photos\/amu-scene-lounge-night-1120\.webp 1120w"/);
+    assert.match(shell, /srcset="\/photos\/amu-scene-rooftop-evening-640\.webp 640w, \/photos\/amu-scene-rooftop-evening-1120\.webp 1120w"/);
     assert.match(shell, /<figcaption>Illustration<\/figcaption>/);
     assert.match(shell, /Quiet talks\. Loud numbers\./);
     assert.match(shell, /Execution creates the ROI\./);

@@ -11,7 +11,7 @@ async function pageHtml(base, pathname) {
 
 function assertPhotoSrc(html, src) {
   assert.ok(html.includes('src="' + src + '"'), 'expected img src ' + src);
-  assert.match(html, /data-photo="amu-agent-lounge-1120\.webp"/);
+  assert.match(html, /data-photo="amu-scene-lounge-night-1120\.webp"/);
   assert.doesNotMatch(html, /src="photos\//);
   assert.doesNotMatch(html, /__COMMUNITY_PHOTO_BASE__/);
 }
@@ -70,12 +70,12 @@ async function assertPhotosSecurity(base, prefix) {
   // The shell's own photograph is now a WebP campaign scene; the flat photo
   // route has no subdirectories, so this also holds that the file was not
   // filed under one.
-  const shellScene = await fetch(root + '/photos/amu-agent-lounge-1120.webp');
+  const shellScene = await fetch(root + '/photos/amu-scene-lounge-night-1120.webp');
   assert.equal(shellScene.status, 200);
   assert.match(shellScene.headers.get('content-type') || '', /^image\/webp\b/);
   assert.equal(shellScene.headers.get('x-content-type-options'), 'nosniff');
 
-  const nested = await fetch(root + '/photos/agents/amu-agent-lounge-1120.webp');
+  const nested = await fetch(root + '/photos/agents/amu-scene-lounge-night-1120.webp');
   assert.equal(nested.status, 404);
 
   const listing = await fetch(root + '/photos/');
@@ -104,9 +104,9 @@ async function assertPhotosSecurity(base, prefix) {
   const shell = await fetch(root + '/community');
   const shellHtml = await shell.text();
   assert.doesNotMatch(shellHtml, /bots-/);
-  assert.match(shellHtml, /srcset="[^"]*amu-agent-lounge-640\.webp 640w/);
-  assert.match(shellHtml, /amu-agent-lounge-1120\.webp 1120w/);
-  assert.match(shellHtml, /amu-agent-rooftop-640\.webp 640w/);
+  assert.match(shellHtml, /srcset="[^"]*amu-scene-lounge-night-640\.webp 640w/);
+  assert.match(shellHtml, /amu-scene-lounge-night-1120\.webp 1120w/);
+  assert.match(shellHtml, /amu-scene-rooftop-evening-640\.webp 640w/);
   assert.match(shellHtml, /<figcaption>Illustration<\/figcaption>/);
 }
 
@@ -114,9 +114,9 @@ test('shell photos are served from site/photos and traversal is rejected', async
   const ctx = await startApp();
   try {
     const html = await pageHtml(ctx.base, '/community');
-    assertPhotoSrc(html, '/photos/amu-agent-lounge-1120.webp');
+    assertPhotoSrc(html, '/photos/amu-scene-lounge-night-1120.webp');
     const slashed = await pageHtml(ctx.base, '/community/');
-    assertPhotoSrc(slashed, '/photos/amu-agent-lounge-1120.webp');
+    assertPhotoSrc(slashed, '/photos/amu-scene-lounge-night-1120.webp');
     await assertPhotosSecurity(ctx.base, '');
   } finally {
     await ctx.close();
@@ -127,9 +127,9 @@ test('shell photos are served from site/photos and traversal is rejected', async
   const staged = await startApp();
   try {
     const html = await pageHtml(staged.base, '/staging/community');
-    assertPhotoSrc(html, '/staging/photos/amu-agent-lounge-1120.webp');
+    assertPhotoSrc(html, '/staging/photos/amu-scene-lounge-night-1120.webp');
     const slashed = await pageHtml(staged.base, '/staging/community/');
-    assertPhotoSrc(slashed, '/staging/photos/amu-agent-lounge-1120.webp');
+    assertPhotoSrc(slashed, '/staging/photos/amu-scene-lounge-night-1120.webp');
     await assertPhotosSecurity(staged.base, '/staging');
     const outsidePrefix = await fetch(staged.base + '/photos/bots-venue.svg');
     assert.equal(outsidePrefix.status, 404);
@@ -138,7 +138,9 @@ test('shell photos are served from site/photos and traversal is rejected', async
       'utf8',
     );
     assert.doesNotMatch(home, /bots-/);
-    assert.match(home, /photos\/amu-agent-cafe-640\.webp 640w/);
+    assert.match(home, /photos\/amu-scene-studio-day-640\.webp 640w, photos\/amu-scene-studio-day-1120\.webp 1120w/);
+    assert.match(home, /photos\/amu-scene-rooftop-evening-640\.webp 640w/);
+    assert.match(home, /photos\/amu-scene-lounge-night-640\.webp 640w/);
     assert.match(home, /The people behind the performance\./);
     assert.match(home, /Quiet talks\. Loud numbers\./);
     assert.match(home, /Execution creates the ROI\./);

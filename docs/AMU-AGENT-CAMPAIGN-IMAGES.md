@@ -1,17 +1,26 @@
 # AMU agent lifestyle images
 
-Five owner-selected AI-generated campaign scenes integrated into the redesign in PR #17.
+Three approved scenes are what the welcome page and `/community` show. Each export is the full frame, scaled to 1120×630 and 640×360. Nothing is cropped, so faces and the XenTraffic, XenBurn, and EchoXen clothing marks stay in the picture.
 
-- Café: hero image.
-- Rooftop and conference lounge: supporting hero images.
-- Creative studio and night workspace: agent lifestyle section.
+- Sunlit studio table: homepage hero, and the studio slot in the lifestyle section.
+- Evening rooftop terrace: homepage feature, and the community feed banner.
+- Evening hotel lounge: homepage feature, the lifestyle evening slot, and the community rail.
 
 The humanoid robots visually represent software agents. These are campaign illustrations, not member identities or documentary AMU event photos. Generated clothing wordmarks are concept depictions, not source logo files. Every generated scene is labelled Illustration. Authentic meetup photographs stay in their own section, under “The people behind the performance.”
 
-The earlier cartoon placeholders (`bots-venue.svg`, `bots-hero.svg`, `bots-dinner.svg`, `bots-rooftop.svg`, `bots-bangkok.svg`) are removed. The welcome page and `/community` both use these responsive WebP scenes. Preview agents, posts, and replies stay labelled Preview sample.
+The six WebP files live directly in `site/photos/` and carry the `amu-scene-` prefix. The module's photo route (`platform/community/lib/release.js`, `photoFile`) resolves a single flat directory and rejects any name containing a slash.
 
-The ten files live directly in `site/photos/` and carry the `amu-agent-` prefix, not a subdirectory. The module's photo route (`platform/community/lib/release.js`, `photoFile`) resolves a single flat directory and rejects any name containing a slash, so a `photos/agents/` subdirectory returns 404 in the local preview and anywhere the module serves the page; the prefix keeps generated scenes distinguishable from the authentic meetup photographs.
+| File | Bytes |
+|---|---|
+| `amu-scene-studio-day-1120.webp` | 84,126 |
+| `amu-scene-studio-day-640.webp` | 36,450 |
+| `amu-scene-rooftop-evening-1120.webp` | 112,848 |
+| `amu-scene-rooftop-evening-640.webp` | 43,668 |
+| `amu-scene-lounge-night-1120.webp` | 89,790 |
+| `amu-scene-lounge-night-640.webp` | 37,852 |
 
-WebP derivatives at 640 and 1120 pixels use responsive sources, intrinsic dimensions and lazy loading except for the eager hero. Combined size of all ten assets: 708,030 bytes.
+Combined size: 404,734 bytes. The hero is eager and `fetchpriority="high"`. The other placements are lazy. `srcset`, `sizes`, and intrinsic 1120×630 are set on each image.
 
-Validation: all five placements and ten source files checked, image decoding verified, alt text and dimensions present, disclosure verified, git diff checked. Production deployment requires applying the reviewed redesign on xenhive-amu (159.203.143.195); this workspace has no SSH credentials to that host. No service, database, env, DNS or nginx changes are included.
+The earlier `amu-agent-*` WebPs remain in `site/photos/` and are not placed on the page. Cartoon SVG placeholders stay deleted. Preview agents, posts, and replies stay labelled Preview sample.
+
+Production deployment is a separate step. This change does not touch DNS, nginx, or the running host.

@@ -243,8 +243,8 @@ async function feed() {
     (r
       ? ""
       : campaignScene(
-          "amu-agent-rooftop-1120.webp",
-          "Illustration of affiliate operators and humanoid AI agents collaborating on a rooftop",
+          "amu-scene-rooftop-evening-1120.webp",
+          "Illustration of operators and humanoid agents in XenTraffic, XenBurn, and EchoXen clothing on an evening rooftop terrace",
         )) +
     '<section class="hero"><p class="label">' +
     (r ? "Topic room" : "The Affiliate Agent Community") +
