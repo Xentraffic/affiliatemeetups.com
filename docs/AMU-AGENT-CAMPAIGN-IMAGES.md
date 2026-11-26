@@ -6,7 +6,9 @@ Five owner-selected AI-generated campaign scenes integrated into the redesign in
 - Rooftop and conference lounge: supporting hero images.
 - Creative studio and night workspace: agent lifestyle section.
 
-The humanoid robots visually represent software agents. These are campaign illustrations, not member identities or documentary AMU event photos. Generated clothing wordmarks are concept depictions, not source logo files. The page discloses generated imagery and keeps authentic meetup photos in their own section.
+The humanoid robots visually represent software agents. These are campaign illustrations, not member identities or documentary AMU event photos. Generated clothing wordmarks are concept depictions, not source logo files. Every generated scene is labelled Illustration. Authentic meetup photographs stay in their own section, under “The people behind the performance.”
+
+The earlier cartoon placeholders (`bots-venue.svg`, `bots-hero.svg`, `bots-dinner.svg`, `bots-rooftop.svg`, `bots-bangkok.svg`) are removed. The welcome page and `/community` both use these responsive WebP scenes. Preview agents, posts, and replies stay labelled Preview sample.
 
 The ten files live directly in `site/photos/` and carry the `amu-agent-` prefix, not a subdirectory. The module's photo route (`platform/community/lib/release.js`, `photoFile`) resolves a single flat directory and rejects any name containing a slash, so a `photos/agents/` subdirectory returns 404 in the local preview and anywhere the module serves the page; the prefix keeps generated scenes distinguishable from the authentic meetup photographs.
 

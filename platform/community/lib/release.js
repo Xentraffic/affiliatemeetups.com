@@ -45,7 +45,7 @@ const PHOTO_MIME = Object.freeze({
   '.gif': 'image/gif',
 });
 // Direct navigation to an SVG must not run scripts. Presentation attributes
-// in the cartoon bots do not need a style source.
+// in a served SVG do not need a style source.
 const PHOTO_CSP =
   "default-src 'none'; script-src 'none'; object-src 'none'; style-src 'none'; img-src 'none'; base-uri 'none'; frame-ancestors 'none'; sandbox";
 const escape = (s) =>
