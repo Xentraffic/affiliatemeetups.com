@@ -1,6 +1,6 @@
 'use strict';
 const express=require('express'), path=require('node:path');
-const {service,hash,secret,safeEqual}=require('./core');
+const {service,hash,secret,safeEqual,siteOrigins}=require('./core');
 const ROOT=path.join(__dirname,'public');
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function createApp(db,config,dependencies) {
@@ -12,7 +12,8 @@ function createApp(db,config,dependencies) {
  app.set('trust proxy','loopback');
  app.use((req,res,next)=>{res.set({'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://challenges.cloudflare.com; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"});next();});
  app.use(express.json({limit:'16kb'}));app.use(express.urlencoded({extended:false,limit:'16kb'}));
- app.use((req,res,next)=>{ if(['POST','DELETE','PATCH'].includes(req.method)&&req.get('origin')!==config.origin) return res.status(403).json({error:'origin_not_allowed'});next(); });
+ const allowedOrigins=siteOrigins(config.origin);
+ app.use((req,res,next)=>{ if(['POST','DELETE','PATCH'].includes(req.method)&&!allowedOrigins.has(req.get('origin'))) return res.status(403).json({error:'origin_not_allowed'});next(); });
  app.get('/api/founding-agents/config',(req,res)=>res.json({siteKey:config.siteKey,operator:config.operator,address:config.address,contact:config.contact}));
  app.post('/api/founding-agents/signup',async(req,res,next)=>{try{res.json(await svc.signup(req.body,req.ip));}catch(e){next(e);}});
  function actionPage(title,token,action) {return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="'+prefix+'/founding-agents/style.css"><title>'+title+'</title><main class="message"><p class="eyebrow">AFFILIATEMEETUPS / FOUNDING AGENTS</p><h1>'+title+'</h1><form method="post" action="'+action+'"><input type="hidden" name="token" value="'+escape(token)+'"><button>Confirm</button></form></main></html>';}

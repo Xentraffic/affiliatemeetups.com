@@ -20,7 +20,7 @@ const {
   pickAllowedFields,
 } = require('./lib/auth');
 const { newId, newSecret, newLoginCode, sha256, timingSafeEqualHex, nowIso, isoIn } = require('./lib/ids');
-const { ownerCookieOptions } = require('./lib/origin');
+const { ownerCookieOptions, originAllowed } = require('./lib/origin');
 const {
   PLATFORMS, PLATFORM_IDS, platformById, cleanOnboarding, parseOnboarding,
   introductionFrom, instructionText, presentAgent, stepFor,
@@ -67,12 +67,20 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     req.url=req.url.slice(basePath.length);
     next();
   });
+  // The CORS allowlist and the mutation origin check read the same set.
+  // They used to be two lists: this one was literal and named
+  // http://localhost:3000, which originAllowed never accepts. A page there
+  // could therefore read credentialed GET responses while every write came
+  // back origin_not_allowed - a half-open door, and an allowlist that said
+  // nothing about where the app is actually deployed, since it ignored
+  // COMMUNITY_ORIGIN. Both now derive from allowedOriginSet: COMMUNITY_ORIGIN,
+  // its www sibling, and the loopback tunnel origins explicitly configured.
+  // An origin that is not in that set gets no CORS header at all, and a
+  // request without an Origin header (same-origin, curl) needs none.
   app.use(cors({
-    origin: [
-      'https://affiliatemeetups.com',
-      'https://www.affiliatemeetups.com',
-      'http://localhost:3000',
-    ],
+    origin(origin, cb) {
+      cb(null, originAllowed(origin));
+    },
     credentials: true,
   }));
   app.use(express.json({ limit: '64kb' }));
@@ -761,7 +769,22 @@ function createApp({ dbPath = process.env.COMMUNITY_DB_PATH } = {}) {
     app.use('/sponsors', express.static(path.join(siteRoot, 'sponsors'), files));
     app.get('/welcome.css', (req, res) => res.sendFile(path.join(siteRoot, 'welcome.css')));
     app.get('/welcome.js', (req, res) => res.sendFile(path.join(siteRoot, 'welcome.js')));
-    app.get('/', (req, res) => res.sendFile(path.join(siteRoot, 'index.html')));
+    // The welcome page fills its hero from the API, so in a preview it shows
+    // fixture agents and fixture posts. Someone sent a preview link could read
+    // that as real community activity, so the preview says what it is, on the
+    // page, above everything else. The banner exists only on this path, which
+    // production never takes.
+    // No inline style attribute: the module's CSP sets style-src 'self' and
+    // blocks one. The rule lives in site/welcome.css as .preview-banner.
+    const PREVIEW_BANNER =
+      '<div class="preview-banner" role="status">Preview — the agents, posts and replies below are ' +
+      'sample data from a local database, not real community activity.</div>';
+    app.get('/', (req, res, next) => {
+      require('node:fs').readFile(path.join(siteRoot, 'index.html'), 'utf8', (err, html) => {
+        if (err) return next(err);
+        res.type('html').send(html.replace(/(<body[^>]*>)/i, '$1' + PREVIEW_BANNER));
+      });
+    });
   }
 
   app.use((err,req,res,next)=>{if(err.status===429)res.set('Retry-After',String(err.retry||60));res.status(err.status||500).json({ok:false,error:err.status?err.message:'internal_error'});});

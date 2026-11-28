@@ -7,7 +7,17 @@
  * is http://127.0.0.1:8080 or http://localhost:8080 while COMMUNITY_ORIGIN stays
  * the public HTTPS site. Those tunnel origins are allowed only when they are
  * listed in COMMUNITY_TUNNEL_ORIGINS. The list cannot name a public host.
- * Unset, the check is exactly COMMUNITY_ORIGIN, as before.
+ * Unset, the check is COMMUNITY_ORIGIN and its www sibling, and nothing else.
+ *
+ * The www sibling is why signup returned origin_not_allowed in production:
+ * affiliatemeetups.com and www.affiliatemeetups.com both serve the site on the
+ * same certificate with no redirect between them, so a visitor who landed on
+ * www sent Origin: https://www.affiliatemeetups.com while COMMUNITY_ORIGIN was
+ * the apex, and every POST was rejected. The pair is derived from
+ * COMMUNITY_ORIGIN alone - same scheme, same port, the host with or without a
+ * single leading "www." - so no configuration can widen it to a third host and
+ * the check stays fail-closed. A redirect in nginx would also fix the symptom,
+ * but the app must not depend on a server rule it cannot see.
  *
  * A mutation that carries a cookie and no Origin is still rejected.
  *
@@ -22,6 +32,29 @@ const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 function primaryOrigin(env = process.env) {
   return env.COMMUNITY_ORIGIN || 'https://affiliatemeetups.com';
+}
+
+/**
+ * The configured origin plus its www sibling, and nothing else.
+ *
+ * Same scheme and same port; only the single leading "www." label differs. An
+ * unparseable COMMUNITY_ORIGIN yields the literal string on its own, so a
+ * misconfiguration narrows the allowlist instead of widening it.
+ *
+ * @returns {string[]}
+ */
+function siteOrigins(env = process.env) {
+  const primary = primaryOrigin(env);
+  const url = parseOrigin(primary);
+  if (!url) return [primary];
+  const host = url.hostname.toLowerCase();
+  // A loopback or bare host has no www sibling to pair with.
+  if (isLoopbackHost(host) || !host.includes('.')) return [primary];
+  const sibling = host.startsWith('www.') ? host.slice(4) : 'www.' + host;
+  if (!sibling.includes('.')) return [primary];
+  const other = new URL(primary);
+  other.hostname = sibling;
+  return primary === other.origin ? [primary] : [primary, other.origin];
 }
 
 function parseOrigin(value) {
@@ -76,10 +109,10 @@ function tunnelOriginList(env = process.env) {
 }
 
 function allowedOriginSet(env = process.env) {
-  const primary = primaryOrigin(env);
+  const site = siteOrigins(env);
   const { origins, errors } = tunnelOriginList(env);
-  if (errors.length) return new Set([primary]);
-  return new Set([primary, ...origins]);
+  if (errors.length) return new Set(site);
+  return new Set([...site, ...origins]);
 }
 
 function originAllowed(originHeader, env = process.env) {
@@ -132,6 +165,7 @@ function adminCookieOptions(req, env = process.env) {
 
 module.exports = {
   primaryOrigin,
+  siteOrigins,
   parseOrigin,
   isLoopbackHost,
   tunnelOriginList,

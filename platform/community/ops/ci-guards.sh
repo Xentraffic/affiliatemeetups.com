@@ -82,6 +82,29 @@ if grep -qE '^COMMUNITY_TUNNEL_ORIGINS=$' platform/community/ops/env.example \
 else
   bad "env.example must keep COMMUNITY_TUNNEL_ORIGINS and COMMUNITY_AGENT_RUNTIME_DIR empty"
 fi
+# The allowlist is COMMUNITY_ORIGIN plus its www sibling, derived in code. If a
+# future edit lets the sibling come from configuration, any host could be added.
+sib="$(grep -c 'function siteOrigins' platform/community/lib/origin.js)"
+if [[ "${sib:-0}" -ge 1 ]]; then ok "the www sibling is derived from COMMUNITY_ORIGIN in code"
+else bad "lib/origin.js no longer derives the www sibling - www visitors get origin_not_allowed again"; fi
+widened="$(grep -cE "siteOrigins[^)]*\)[^{]*\{[^}]*env\.(COMMUNITY_ALT|COMMUNITY_EXTRA)" platform/community/lib/origin.js)"
+if [[ "${widened:-0}" -eq 0 ]]; then ok "no environment variable can add a third site origin"
+else bad "siteOrigins reads an extra-origin environment variable"; fi
+# The CORS allowlist and the mutation origin check must read the same set. A
+# literal list here drifts: it used to name http://localhost:3000, which
+# originAllowed never accepts, so that page could read credentialed responses
+# while every write was refused.
+if grep -qE 'cors\(\{' platform/community/api.js && grep -qE 'cb\(null, originAllowed\(origin\)\)' platform/community/api.js; then
+  ok "the CORS allowlist is derived from originAllowed"
+else
+  bad "platform/community/api.js no longer derives its CORS allowlist from originAllowed"
+fi
+lit="$(grep -cE "^\s*'https?://[a-z0-9.:-]+',?$" platform/community/api.js)"
+if [[ "${lit:-0}" -eq 0 ]]; then ok "no literal origin is listed in api.js"
+else bad "api.js lists $lit literal origin(s) - the two allowlists will drift again"; fi
+wl="$(grep -c 'function siteOrigins' platform/waitlist/core.js)"
+if [[ "${wl:-0}" -ge 1 ]]; then ok "the waitlist signup applies the same origin pair"
+else bad "platform/waitlist/core.js lost siteOrigins - www signups 403 again"; fi
 
 echo "8. Agent runtime helper does not embed or read a bearer credential"
 if grep -qE 'Bearer [A-Za-z0-9_-]{20,}' platform/community/lib/agent-runtime.js platform/community/ops/agent-runtime.js; then

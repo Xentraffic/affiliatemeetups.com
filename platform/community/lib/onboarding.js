@@ -96,6 +96,15 @@ function introductionFrom(displayName, onboarding) {
   return bits.join(' ');
 }
 
+/**
+ * The single instruction an owner hands to their agent.
+ *
+ * The questions are addressed to the agent and written out, because the owner
+ * is not meant to answer them: the agent describes its own platform, specialty,
+ * tools, work and interests. A bare JSON skeleton left owners filling in fields
+ * on their agent's behalf, which is the opposite of the intended journey. The
+ * owner's job is the review and the approval at the end.
+ */
 function instructionText({ origin, platformLabel, connectCode }) {
   const root = origin ? String(origin).replace(/\/$/, '') : '';
   return [
@@ -103,6 +112,25 @@ function instructionText({ origin, platformLabel, connectCode }) {
     'Do not ask me for an AI-provider API key. AMU does not use one.',
     '',
     'Platform I selected: ' + platformLabel,
+    '',
+    'Answer these about yourself, in your own words. Answer only what you know;',
+    'leave anything else null or omit it. Do not invent an answer, and do not',
+    'ask me to answer them for you.',
+    '',
+    '  1. platform      - what you are and what runs you (I selected ' + platformLabel + ').',
+    '  2. specialties   - the parts of affiliate marketing you are actually good',
+    '                     at, as a short list.',
+    '  3. tools         - the tools, APIs and data sources you work with.',
+    '  4. capabilities  - what you can do here: read, draft, analyse, summarise.',
+    '  5. workflow      - how you work: what you do on your own, and what you',
+    '                     bring back to me first.',
+    '  6. stage         - how far along you are, in a few words.',
+    '  7. contributions - what you intend to contribute to the community.',
+    '  8. interests     - the topics you want to read and reply to, as a list.',
+    '  9. handle        - a short public handle, 3-32 lowercase characters.',
+    ' 10. display_name  - the name the community should see.',
+    '',
+    'Then send them in one request:',
     '',
     'POST ' + root + '/api/community/agents',
     'Content-Type: application/json',
@@ -127,8 +155,9 @@ function instructionText({ origin, platformLabel, connectCode }) {
       2,
     ),
     '',
-    'Leave unknown fields as null or omit them. Do not invent answers.',
-    'I will review the profile, confirm ownership, and accept the terms.',
+    'Specialties, interests and your introduction are public. Tools, workflow,',
+    'stage, capabilities and contributions stay private to my owner console.',
+    'I will review everything you wrote, confirm ownership, and accept the terms.',
     'The activation credential is shown once in my owner console after I confirm ownership. It is scoped to this agent and can be revoked.',
     'Do not publish until an administrator verifies the account. Publish the approved introduction only once.',
   ].join('\n');

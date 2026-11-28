@@ -11,35 +11,76 @@ async function pageHtml(base, pathname) {
 
 function assertPhotoSrc(html, src) {
   assert.ok(html.includes('src="' + src + '"'), 'expected img src ' + src);
-  assert.match(html, /data-photo="bots-venue\.svg"/);
+  assert.match(html, /data-photo="amu-scene-lounge-night-1120\.webp"/);
   assert.doesNotMatch(html, /src="photos\//);
   assert.doesNotMatch(html, /__COMMUNITY_PHOTO_BASE__/);
 }
 
+const CARTOON_PHOTOS = [
+  'bots-venue.svg',
+  'bots-hero.svg',
+  'bots-dinner.svg',
+  'bots-rooftop.svg',
+  'bots-bangkok.svg',
+];
+
 async function assertPhotosSecurity(base, prefix) {
   const root = base + prefix;
-  const svg = await fetch(root + '/photos/bots-venue.svg');
-  assert.equal(svg.status, 200);
-  assert.match(svg.headers.get('content-type') || '', /^image\/svg\+xml\b/);
-  assert.equal(svg.headers.get('x-content-type-options'), 'nosniff');
-  const csp = svg.headers.get('content-security-policy') || '';
-  assert.match(csp, /default-src 'none'/);
-  assert.match(csp, /script-src 'none'/);
-  assert.match(csp, /sandbox/);
-  assert.doesNotMatch(csp, /unsafe-inline/);
-  assert.doesNotMatch(csp, /script-src 'self'/);
-  const body = await svg.text();
-  assert.match(body, /<svg[\s>]/);
-  assert.match(body, /Cartoon bots under neon arches/);
+  for (const name of CARTOON_PHOTOS) {
+    const gone = await fetch(root + '/photos/' + name);
+    assert.equal(gone.status, 404, name + ' should no longer be served');
+    assert.doesNotMatch(await gone.text(), /<svg[\s>]/);
+  }
 
-  const dinner = await fetch(root + '/photos/bots-dinner.svg');
-  assert.equal(dinner.status, 200);
-  assert.match(dinner.headers.get('content-type') || '', /^image\/svg\+xml\b/);
-  assert.match(await dinner.text(), /<svg[\s>]/);
+  // SVG responses stay sandboxed. The probe is a test file, not a page asset,
+  // and it is removed before the test returns.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const probeName = 'csp-probe-' + process.pid + '.svg';
+  const probePath = path.join(__dirname, '../../../site/photos', probeName);
+  fs.writeFileSync(
+    probePath,
+    '<svg xmlns="http://www.w3.org/2000/svg"><title>CSP probe</title></svg>',
+  );
+  try {
+    const svg = await fetch(root + '/photos/' + probeName);
+    assert.equal(svg.status, 200);
+    assert.match(svg.headers.get('content-type') || '', /^image\/svg\+xml\b/);
+    assert.equal(svg.headers.get('x-content-type-options'), 'nosniff');
+    const csp = svg.headers.get('content-security-policy') || '';
+    assert.match(csp, /default-src 'none'/);
+    assert.match(csp, /script-src 'none'/);
+    assert.match(csp, /sandbox/);
+    assert.doesNotMatch(csp, /unsafe-inline/);
+    assert.doesNotMatch(csp, /script-src 'self'/);
+    const body = await svg.text();
+    assert.match(body, /<svg[\s>]/);
+    assert.doesNotMatch(body, /Cartoon bots/);
+  } finally {
+    fs.rmSync(probePath, { force: true });
+  }
+
+  // The shell's own photograph is a JPEG; it must be served and typed. The
+  // probe above covers the hardened SVG path.
+  const shellPhoto = await fetch(root + '/photos/amu-crowd-2.jpg');
+  assert.equal(shellPhoto.status, 200);
+  assert.match(shellPhoto.headers.get('content-type') || '', /^image\/jpeg\b/);
+  assert.equal(shellPhoto.headers.get('x-content-type-options'), 'nosniff');
+
+  // The shell's own photograph is now a WebP campaign scene; the flat photo
+  // route has no subdirectories, so this also holds that the file was not
+  // filed under one.
+  const shellScene = await fetch(root + '/photos/amu-scene-lounge-night-1120.webp');
+  assert.equal(shellScene.status, 200);
+  assert.match(shellScene.headers.get('content-type') || '', /^image\/webp\b/);
+  assert.equal(shellScene.headers.get('x-content-type-options'), 'nosniff');
+
+  const nested = await fetch(root + '/photos/agents/amu-scene-lounge-night-1120.webp');
+  assert.equal(nested.status, 404);
 
   const listing = await fetch(root + '/photos/');
   assert.equal(listing.status, 404);
-  assert.doesNotMatch(await listing.text(), /bots-venue\.svg/);
+  assert.doesNotMatch(await listing.text(), /amu-crowd-2\.jpg/);
 
   const bare = await fetch(root + '/photos');
   assert.equal(bare.status, 404);
@@ -59,15 +100,23 @@ async function assertPhotosSecurity(base, prefix) {
     redirect: 'manual',
   });
   assert.notEqual(alias.status, 200);
+
+  const shell = await fetch(root + '/community');
+  const shellHtml = await shell.text();
+  assert.doesNotMatch(shellHtml, /bots-/);
+  assert.match(shellHtml, /srcset="[^"]*amu-scene-lounge-night-640\.webp 640w/);
+  assert.match(shellHtml, /amu-scene-lounge-night-1120\.webp 1120w/);
+  assert.match(shellHtml, /amu-scene-rooftop-evening-640\.webp 640w/);
+  assert.match(shellHtml, /<figcaption>Illustration<\/figcaption>/);
 }
 
-test('bot photos are served from site/photos and traversal is rejected', async () => {
+test('shell photos are served from site/photos and traversal is rejected', async () => {
   const ctx = await startApp();
   try {
     const html = await pageHtml(ctx.base, '/community');
-    assertPhotoSrc(html, '/photos/bots-venue.svg');
+    assertPhotoSrc(html, '/photos/amu-scene-lounge-night-1120.webp');
     const slashed = await pageHtml(ctx.base, '/community/');
-    assertPhotoSrc(slashed, '/photos/bots-venue.svg');
+    assertPhotoSrc(slashed, '/photos/amu-scene-lounge-night-1120.webp');
     await assertPhotosSecurity(ctx.base, '');
   } finally {
     await ctx.close();
@@ -78,12 +127,24 @@ test('bot photos are served from site/photos and traversal is rejected', async (
   const staged = await startApp();
   try {
     const html = await pageHtml(staged.base, '/staging/community');
-    assertPhotoSrc(html, '/staging/photos/bots-venue.svg');
+    assertPhotoSrc(html, '/staging/photos/amu-scene-lounge-night-1120.webp');
     const slashed = await pageHtml(staged.base, '/staging/community/');
-    assertPhotoSrc(slashed, '/staging/photos/bots-venue.svg');
+    assertPhotoSrc(slashed, '/staging/photos/amu-scene-lounge-night-1120.webp');
     await assertPhotosSecurity(staged.base, '/staging');
     const outsidePrefix = await fetch(staged.base + '/photos/bots-venue.svg');
     assert.equal(outsidePrefix.status, 404);
+    const home = require('node:fs').readFileSync(
+      require('node:path').join(__dirname, '../../../site/index.html'),
+      'utf8',
+    );
+    assert.doesNotMatch(home, /bots-/);
+    assert.match(home, /photos\/amu-scene-studio-day-640\.webp 640w, photos\/amu-scene-studio-day-1120\.webp 1120w/);
+    assert.match(home, /photos\/amu-scene-rooftop-evening-640\.webp 640w/);
+    assert.match(home, /photos\/amu-scene-lounge-night-640\.webp 640w/);
+    assert.match(home, /The people behind the performance\./);
+    assert.match(home, /Quiet talks\. Loud numbers\./);
+    assert.match(home, /Execution creates the ROI\./);
+    assert.match(home, /class="illus">Illustration</);
   } finally {
     if (previous === undefined) delete process.env.COMMUNITY_BASE_PATH;
     else process.env.COMMUNITY_BASE_PATH = previous;

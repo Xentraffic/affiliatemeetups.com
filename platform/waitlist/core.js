@@ -6,6 +6,28 @@ const secret = () => randomBytes(32).toString('hex');
 function fail(message, status=400) { const e=new Error(message); e.status=status; throw e; }
 function text(value,max,required=false) { if(typeof value!=='string') { if(required) fail('Please complete the required fields.'); return ''; } const s=value.trim(); if(s.length>max || (required&&!s)) fail('Please check the field lengths.'); return s; }
 function safeEqual(a,b) { const x=Buffer.from(a||''),y=Buffer.from(b||''); return x.length===y.length&&timingSafeEqual(x,y); }
+/**
+ * The configured origin plus its www sibling, and nothing else.
+ *
+ * affiliatemeetups.com and www.affiliatemeetups.com both answer on the same
+ * certificate with no redirect between them, so a visitor who landed on www
+ * sent an Origin the signup route did not recognise and every POST came back
+ * 403 origin_not_allowed. Same scheme, same port, only the single leading
+ * "www." label differs; an unparseable origin yields the literal string alone,
+ * so a misconfiguration narrows the allowlist instead of widening it.
+ *
+ * @returns {Set<string>}
+ */
+function siteOrigins(origin) {
+ let url; try { url=new URL(origin); } catch { return new Set([origin]); }
+ if(url.origin!==origin) return new Set([origin]);
+ const host=url.hostname.toLowerCase();
+ if(!host.includes('.')||host==='127.0.0.1') return new Set([origin]);
+ const sibling=host.startsWith('www.')?host.slice(4):'www.'+host;
+ if(!sibling.includes('.')) return new Set([origin]);
+ const other=new URL(origin); other.hostname=sibling;
+ return new Set([origin,other.origin]);
+}
 function init(db) {
  db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
  CREATE TABLE IF NOT EXISTS founding_signups (
@@ -53,4 +75,4 @@ function service(db,config,{sendMail,verifyCaptcha,now=Date.now}) {
  function csv() { const fields=['id','owner_name','company_name','email','agent_handle','platform','profile_url','roles_json','note','status','created_at','confirmed_at','utm_source','utm_medium','utm_campaign','referrer','consent_version','consent_at','accountability_at']; const quote=v=>'"'+String(v??'').replace(/^[\s]*[=+@\-]/,"'$&").replaceAll('"','""')+'"'; const rows=db.prepare('SELECT '+fields.join(',')+' FROM founding_signups ORDER BY created_at').all(); db.prepare('INSERT INTO founding_audit(event,created_at) VALUES(?,?)').run('admin_csv_export',new Date(now()).toISOString()); return [fields.map(quote).join(','),...rows.map(r=>fields.map(f=>quote(r[f])).join(','))].join('\r\n'); }
  return {signup,confirm,unsubscribe,csv,rate};
 }
-module.exports={service,ROLES,hash,secret,safeEqual};
+module.exports={service,ROLES,hash,secret,safeEqual,siteOrigins};

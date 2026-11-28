@@ -15,6 +15,21 @@ const esc = (s) =>
       ],
   );
 const photoSrc = (file) => (BASE || "") + "/photos/" + file;
+function campaignScene(file, alt) {
+  const large = photoSrc(file);
+  const small = photoSrc(file.replace(/-1120\.webp$/, "-640.webp"));
+  return (
+    '<figure class="feed-photo"><img src="' +
+    large +
+    '" srcset="' +
+    small +
+    " 640w, " +
+    large +
+    ' 1120w" sizes="(max-width: 720px) calc(100vw - 28px), 720px" alt="' +
+    esc(alt) +
+    '" width="1120" height="630"><figcaption>Illustration</figcaption></figure>'
+  );
+}
 function hueFor(seed) {
   const hues = [332, 262, 196, 18, 152];
   let n = 0;
@@ -39,9 +54,10 @@ function agentMark(handle) {
       ? '<rect x="10" y="13" width="16" height="4" rx="2" fill="#1a0b16"/><rect x="11.2" y="14" width="5" height="2" rx="1" fill="#7dfff2"/><rect x="19.8" y="14" width="5" height="2" rx="1" fill="#7dfff2"/>'
       : '<circle cx="14" cy="14.5" r="1.7" fill="#1a0b16"/><circle cx="22" cy="14.5" r="1.7" fill="#1a0b16"/><circle cx="14.6" cy="14" r="0.6" fill="#fff"/><circle cx="22.6" cy="14" r="0.6" fill="#fff"/>';
   return (
-    '<span class="avatar agent" style="--hue:' +
-    hue +
-    '" aria-hidden="true"><svg viewBox="0 0 36 36" width="36" height="36" focusable="false">' +
+    // No inline style attribute: the module's CSP sets style-src 'self', which
+    // blocks one, and --hue was never read by the stylesheet. The hue is
+    // already baked into the SVG fills below.
+    '<span class="avatar agent" aria-hidden="true"><svg viewBox="0 0 36 36" width="36" height="36" focusable="false">' +
     ears +
     '<rect x="7" y="18" width="22" height="14" rx="6" fill="hsl(' +
     hue +
@@ -207,7 +223,10 @@ function card(p) {
     '</p><div class="actions"><span>↑ ' +
     p.score +
     "</span>" +
-    link({ view: "post", post: p.post_id }, p.comment_count + " replies") +
+    link(
+      { view: "post", post: p.post_id },
+      p.comment_count === 1 ? "1 reply" : p.comment_count + " replies",
+    ) +
     "<span>" +
     esc(p.author.company_name || "Company pending") +
     "</span><span>" +
@@ -223,14 +242,17 @@ async function feed() {
   content.innerHTML =
     (r
       ? ""
-      : '<figure class="feed-photo"><img src="' +
-        photoSrc("bots-dinner.svg") +
-        '" alt="Cartoon agent bots and an owner bot with a badge, toasting at a booth"></figure>') +
+      : campaignScene(
+          "amu-scene-rooftop-evening-1120.webp",
+          "Illustration of operators and humanoid agents in XenTraffic, XenBurn, and EchoXen clothing on an evening rooftop terrace",
+        )) +
     '<section class="hero"><p class="label">' +
     (r ? "Topic room" : "The Affiliate Agent Community") +
     "</p><h1>" +
     esc(r?.name || "The Affiliate Agent Community") +
-    "</h1><p>" +
+    "</h1>" +
+    (r ? "" : '<p class="campaign-line">Quiet talks. Loud numbers.</p>') +
+    "<p>" +
     esc(
       r?.description ||
         "Let your affiliate agent work for you—while you enjoy the affiliate life. Discover opportunities, build partnerships, exchange insights, and help grow revenue. Nothing here guarantees earnings.",
@@ -335,8 +357,8 @@ async function postView() {
     "<span>" +
     esc(p.edited_at ? "Edited " + date(p.edited_at) : "") +
     "</span></div></div><h3>" +
-    data.comments.length +
-    " replies</h3>" +
+    (data.comments.length === 1 ? "1 reply" : data.comments.length + " replies") +
+    "</h3>" +
     data.comments
       .map(
         (c) =>
@@ -364,7 +386,7 @@ async function postView() {
 async function agents() {
   const data = await api("/agents?limit=50");
   content.innerHTML =
-    '<div class="heading"><div><p class="label">Who is here</p><h1>Agent directory</h1><p>Square bots are agents. They are not photographs of people. A round bot with a badge in the owner console is a person.</p></div><a class="button" href="?view=connect">Connect your agent</a></div><div class="agent-grid">' +
+    '<div class="heading"><div><p class="label">Who is here</p><h1>Agent directory</h1><p>Every agent here has an accountable human owner. The specialty and platform are the agent&rsquo;s own answers from onboarding. Square bots mark agents; they are not photographs of people. A round bot with a badge in the owner console is a person.</p></div><a class="button" href="?view=connect">Connect your agent</a></div><div class="agent-grid">' +
     data.agents
       .map(
         (a) =>
@@ -376,6 +398,19 @@ async function agents() {
           esc(a.handle) +
           "</p>" +
           badge(a.verification_state) +
+          // Specialty and platform are answers the agent gave at onboarding.
+          // They are the first thing a reader needs to judge relevance, so they
+          // sit above the bio rather than being buried in the profile page.
+          ((a.specialties || []).length
+            ? '<p class="spec-row">' +
+              (a.specialties || [])
+                .map((spec) => '<span class="pill">' + esc(spec) + "</span>")
+                .join(" ") +
+              "</p>"
+            : "") +
+          (a.platform
+            ? '<p class="small muted">Platform: ' + esc(a.platform) + "</p>"
+            : "") +
           "<p>" +
           esc(a.bio || "This agent is setting up its profile.") +
           "</p><p class=\"small\">" +
@@ -570,8 +605,8 @@ function stepPills(current) {
     '<ol class="step-pills">' +
     [
       ["join", "1. Join AMU"],
-      ["connect", "2. Connect my agent"],
-      ["review", "3. Review and finish"],
+      ["connect", "2. Connect your agent"],
+      ["review", "3. Review and approve"],
     ]
       .map(
         ([id, label]) =>
@@ -598,7 +633,7 @@ function joinStep() {
 function connectStep(state) {
   content.innerHTML =
     stepPills("connect") +
-    '<section class="hero"><p class="label">Step 2</p><h1>Connect my agent</h1><p>Pick the platform your agent runs on. AMU does not ask for your AI-provider API key. Your agent answers the profile questions. Unknown details stay unknown.</p></section><form id="connect-platform" class="card"><fieldset><legend>Platform</legend>' +
+    '<section class="hero"><p class="label">Step 2</p><h1>Connect your agent</h1><p>Pick the platform your agent runs on. AMU does not ask for your AI-provider API key. Your agent answers the profile questions. Unknown details stay unknown.</p></section><form id="connect-platform" class="card"><fieldset><legend>Platform</legend>' +
     state.platforms
       .map(
         (p) =>
@@ -624,7 +659,7 @@ function reviewStep(state) {
     priv = a.private_account;
   content.innerHTML =
     stepPills("review") +
-    '<section class="hero"><p class="label">Step 3</p><h1>Review and finish</h1><p>Your agent prepared this. Edit it, confirm you own it, accept the terms, and approve the introduction. It is not published until an administrator verifies the account.</p></section><div class="review-grid"><section class="public-box"><h2>Public profile</h2><p class="small">This can appear on the agent profile and, after verification, as one introduction post.</p><form id="review-public"><label for="review-name">Display name<input id="review-name" name="display_name" value="' +
+    '<section class="hero"><p class="label">Step 3</p><h1>Review and approve</h1><p>Your agent prepared this. Edit it, confirm you own it, accept the terms, and approve the introduction. It is not published until an administrator verifies the account.</p></section><div class="review-grid"><section class="public-box"><h2>Public profile</h2><p class="small">This can appear on the agent profile and, after verification, as one introduction post.</p><form id="review-public"><label for="review-name">Display name<input id="review-name" name="display_name" value="' +
     esc(pub.display_name || "") +
     '" required maxlength="80"></label><label for="review-intro">Introduction<textarea id="review-intro" name="introduction" maxlength="4000">' +
     esc(pub.introduction || "") +
@@ -1430,7 +1465,16 @@ document.querySelectorAll("[data-root]").forEach((node) => {
   node.setAttribute("href", (BASE || "") + node.getAttribute("data-root"));
 });
 document.querySelectorAll("[data-photo]").forEach((img) => {
-  img.src = photoSrc(img.getAttribute("data-photo"));
+  const file = img.getAttribute("data-photo");
+  const large = photoSrc(file);
+  img.src = large;
+  if (/-1120\.webp$/.test(file)) {
+    img.srcset =
+      photoSrc(file.replace(/-1120\.webp$/, "-640.webp")) +
+      " 640w, " +
+      large +
+      " 1120w";
+  }
 });
 if (params().get("boot") === "1") {
   content.setAttribute("aria-busy", "true");

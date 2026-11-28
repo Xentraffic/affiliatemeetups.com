@@ -1,0 +1,29 @@
+.cal-page[data-astro-cid-lq66zrgw]{max-width:1100px;margin:0 auto;padding:0 60px 80px}.cal-hero[data-astro-cid-lq66zrgw]{padding:100px 0 40px}.cal-h1[data-astro-cid-lq66zrgw]{font-family:Outfit,sans-serif;font-size:clamp(32px,4vw,52px);font-weight:900;letter-spacing:-2px;margin-bottom:12px}.cal-h1[data-astro-cid-lq66zrgw] span[data-astro-cid-lq66zrgw]{color:var(--or)}.cal-desc[data-astro-cid-lq66zrgw]{font-size:16px;color:var(--tx-d);max-width:500px;line-height:1.7;margin-bottom:32px}.cal-filters[data-astro-cid-lq66zrgw]{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:40px;padding:16px 20px;background:var(--dk3);border:1px solid var(--bd);border-radius:12px}.filter-label[data-astro-cid-lq66zrgw]{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx-d)}.filter-btn[data-astro-cid-lq66zrgw]{background:transparent;border:1px solid rgba(255,255,255,.1);color:var(--tx-d);padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;font-family:Space Grotesk,sans-serif}.filter-btn[data-astro-cid-lq66zrgw]:hover,.filter-btn[data-astro-cid-lq66zrgw].active{background:#f4622a1f;border-color:#f4622a66;color:#fff}.month-group[data-astro-cid-lq66zrgw]{margin-bottom:40px}.month-label[data-astro-cid-lq66zrgw]{font-family:Outfit,sans-serif;font-size:13px;font-weight:800;letter-spacing:3px;text-transform:uppercase;color:var(--or);margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid rgba(244,98,42,.2)}.cal-row[data-astro-cid-lq66zrgw]{display:grid;grid-template-columns:160px 1fr auto;gap:20px;align-items:center;padding:16px 20px;background:var(--dk3);border:1px solid var(--bd);border-radius:12px;margin-bottom:10px;transition:all .2s}.cal-row[data-astro-cid-lq66zrgw]:hover{border-color:#f4622a4d;background:var(--dk4)}.cal-row[data-astro-cid-lq66zrgw].hidden{display:none}.cal-date[data-astro-cid-lq66zrgw]{font-size:13px;font-weight:700;color:var(--or)}.cal-name[data-astro-cid-lq66zrgw]{font-family:Outfit,sans-serif;font-size:15px;font-weight:800;color:#fff;margin-bottom:4px}.cal-location[data-astro-cid-lq66zrgw]{font-size:12px;color:var(--tx-d)}.cal-badges[data-astro-cid-lq66zrgw]{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.cal-link[data-astro-cid-lq66zrgw]{font-size:12px;font-weight:700;color:var(--or);white-space:nowrap;padding:8px 14px;border:1px solid rgba(244,98,42,.3);border-radius:8px;transition:all .2s}.cal-link[data-astro-cid-lq66zrgw]:hover{background:#f4622a1a}.tbc-group[data-astro-cid-lq66zrgw] .month-label[data-astro-cid-lq66zrgw]{color:var(--tx-d);border-color:#ffffff1a}@media (max-width:768px){.cal-page[data-astro-cid-lq66zrgw]{padding:0 20px 60px}.cal-row[data-astro-cid-lq66zrgw]{grid-template-columns:1fr;gap:8px}.cal-link[data-astro-cid-lq66zrgw]{align-self:flex-start}}
+
+/* Footer menus must never inherit the fixed header navigation. */
+footer nav.footer-links { position:static; inset:auto; height:auto; z-index:auto; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; padding:0; background:transparent; backdrop-filter:none; border:0; gap:12px; }
+/* Chip styles exist in _slug_.C-2XeeMa.css but are scoped to the layout id
+   data-astro-cid-5hce7sga, which the calendar rows do not carry, so the 24
+   badges rendered as plain text. Same declarations, this page's scope. */
+.badge[data-astro-cid-lq66zrgw]{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:100px;font-size:11px;font-weight:700;letter-spacing:.5px}
+.badge-or[data-astro-cid-lq66zrgw]{background:#f4622a26;color:var(--or);border:1px solid rgba(244,98,42,.3)}
+.badge-gold[data-astro-cid-lq66zrgw]{background:#c9a84c1f;color:var(--gold);border:1px solid rgba(201,168,76,.25)}
+.badge-green[data-astro-cid-lq66zrgw]{background:#22c55e1f;color:#4ade80;border:1px solid rgba(34,197,94,.25)}
+.badge-teal[data-astro-cid-lq66zrgw]{background:#0ea5e91f;color:#38bdf8;border:1px solid rgba(14,165,233,.25)}
+.badge-purple[data-astro-cid-lq66zrgw]{background:#8b5cf61f;color:#a78bfa;border:1px solid rgba(139,92,246,.25)}
+.badge-gray[data-astro-cid-lq66zrgw]{background:#ffffff0f;color:var(--tx-d);border:1px solid rgba(255,255,255,.1)}
+/* Three style attributes stayed inline and the module CSP blocks those too. */
+.cal-foot-h{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:16px}
+.cal-date.is-past{color:var(--tx-d)}
+.cal-sep{width:1px;height:20px;background:rgba(255,255,255,.08);display:inline-block}
+/* Mobile navigation. The control is hidden wherever the links show on their
+   own, and the panel rule outranks .nav-links[data-astro-cid-5hce7sga]
+   {display:none} on specificity, not on stylesheet order. */
+.nav-toggle{display:none;font:inherit;font-size:13px;font-weight:700;color:#fff;background:transparent;border:1px solid rgba(255,255,255,.16);border-radius:8px;cursor:pointer}
+.nav-toggle:focus-visible{outline:3px solid var(--or);outline-offset:2px}
+@media (max-width:768px){
+  .nav-toggle{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:10px 16px}
+  nav .nav-links.open{display:flex;position:absolute;top:72px;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;padding:8px 20px 16px;background:#080808;border-bottom:1px solid rgba(255,255,255,.08)}
+  nav .nav-links.open a{display:flex;align-items:center;min-height:44px;padding:10px 4px;font-size:16px}
+  nav .nav-links.open .nav-cta{justify-content:center;margin-top:8px}
+}

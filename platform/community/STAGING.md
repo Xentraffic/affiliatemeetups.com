@@ -85,9 +85,45 @@ consulted in addition to `COMMUNITY_ORIGIN`. It accepts only loopback `http` or
 `https` origins with an explicit port (`127.0.0.1`, `localhost`, `::1`). A public
 host, a missing port, or a single bad entry is rejected: production startup fails,
 and the extra list is ignored so the bad entry cannot widen the check. Unset, the
-check is exactly `COMMUNITY_ORIGIN`. A cookie on a mutation with no `Origin` is
-still `origin_not_allowed`. SameSite stays `lax` for the owner session and
+check is `COMMUNITY_ORIGIN` and its `www` sibling, and nothing else. A cookie on a
+mutation with no `Origin` is still `origin_not_allowed`. SameSite stays `lax` for the owner session and
 `strict` for the admin session.
+
+### Two different ways to get `origin_not_allowed`
+
+**The tunnel, which is the one operators actually hit.** The browser's `Origin`
+is the loopback near end of `ssh -L`, not the public site, so the sign-in is
+refused until that exact origin is in `COMMUNITY_TUNNEL_ORIGINS`. Three details
+turn this into a confusing failure:
+
+- `http://127.0.0.1:8080` and `http://localhost:8080` are **different origins**.
+  List both, or browse only the one you listed.
+- The port is part of the origin. A tunnel opened on another port is another
+  origin.
+- **One invalid entry discards the whole list** (fail closed), so a typo in the
+  second entry looks exactly like an unset variable.
+
+`test/tunnel-login-browser.test.js` holds all of this in a real browser: the
+tunnel origin refused until allowlisted, the whole journey working once it is,
+and a different loopback origin still refused while it is. That suite used to
+skip silently when the host's cached Chromium was not the revision
+`playwright-core` asks for, so its guarantees went unchecked; it now searches
+the Playwright cache too, newest revision first.
+
+**The `www` sibling, which is a different case.** Where the apex and `www` both
+answer and neither redirects to the other, a visitor who landed on `www` sends
+`Origin: https://www.affiliatemeetups.com` while `COMMUNITY_ORIGIN` is the apex,
+and every signup POST comes back 403 while the page itself loads normally.
+`lib/origin.js` derives the pair from `COMMUNITY_ORIGIN` alone: same scheme,
+same port, the host with or without one leading `www.` label. No configuration
+can add a third host, a loopback or bare host gains no sibling, and an
+unparseable `COMMUNITY_ORIGIN` yields the literal string on its own. A CI guard
+fails the build if that derivation is removed or made configurable.
+`platform/waitlist/core.js` applies the same pair to the founding-agents signup.
+
+A `301` from `www` to the apex in front of the app removes the symptom, and a
+deployment may already have one — check the target rather than assuming either
+way. The app does not depend on a server rule it cannot see.
 
 Recommended staging value, already present in `ops/ecosystem.staging.config.js`
 for the next operator reload. This repository change does not reload the live
